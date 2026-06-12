@@ -9,7 +9,7 @@ same design as the original toy version, just on real geometry in meters.
 import math
 import random
 
-from . import config, grid_world, osm_world
+from . import config, geometry, grid_world, osm_world
 
 WORLD_BUILDERS = {
     "map": osm_world.build_world,
@@ -61,10 +61,13 @@ OCC = {
 PEAK_COEF = {'res': 5, 'office': 9, 'shop': 13}
 TILE_M2 = 25      # the reference model was per 5x5 m tile
 
-# ---- edit limits ----
+# ---- edit limits / defaults ----
 MAX_FLOORS = 20
 MAX_CARS = 50
 MAX_PEOPLE = 100
+MAX_BUILDINGS = 500
+MIN_BUILDING_M2 = 25
+DEFAULT_FLOORS = {'res': 3, 'office': 4, 'shop': 2}
 
 
 class Building:
@@ -303,6 +306,7 @@ class Simulation:
         self._next_car_id = len(self.cars)        # ids stay unique across removals
         self._next_person_id = len(self.people)
         self._next_road_id = len(w["roads"])
+        self._next_building_id = len(self.buildings)
 
         for b in self.buildings:
             b.prefill(self.clock_min)
@@ -378,7 +382,7 @@ class Simulation:
         if floors is None or not 1 <= floors <= MAX_FLOORS:
             raise ValueError(f"floors must be an integer in 1..{MAX_FLOORS}")
         b.set_floors(floors)
-        self.world_data["buildings"][b.id]["floors"] = floors
+        next(d for d in self.world_data["buildings"] if d["id"] == b.id)["floors"] = floors
 
     def _edit_spawn_car(self, op):
         if len(self.cars) >= MAX_CARS:
@@ -462,6 +466,59 @@ class Simulation:
             raise ValueError(f"unknown road id {op.get('id')!r}")
         self._apply_roads(roads)
 
+    def _edit_add_building(self, op):
+        if len(self.buildings) >= MAX_BUILDINGS:
+            raise ValueError(f"building limit reached ({MAX_BUILDINGS})")
+        btype = op.get("type", "res")
+        if btype not in PEAK_COEF:
+            raise ValueError(f"unknown building type {btype!r}, expected one of {sorted(PEAK_COEF)}")
+        floors = self._as_int(op.get("floors", DEFAULT_FLOORS[btype]))
+        if floors is None or not 1 <= floors <= MAX_FLOORS:
+            raise ValueError(f"floors must be an integer in 1..{MAX_FLOORS}")
+        pts = op.get("polygon")
+        if not (isinstance(pts, list) and 3 <= len(pts) <= 30):
+            raise ValueError("polygon must be a list of 3..30 [x, y] pairs")
+        num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+        poly = []
+        for p in pts:
+            if not (isinstance(p, (list, tuple)) and len(p) == 2
+                    and num(p[0]) and num(p[1])
+                    and abs(p[0]) < 1e5 and abs(p[1]) < 1e5):
+                raise ValueError("each polygon point must be [x, y] in meters")
+            poly.append([round(float(p[0]), 1), round(float(p[1]), 1)])
+        area = osm_world.shoelace_area(poly)
+        if area < MIN_BUILDING_M2:
+            raise ValueError(f"footprint must be at least {MIN_BUILDING_M2} m²")
+        name = op.get("name", "")
+        if not isinstance(name, str) or len(name) > 60:
+            raise ValueError("name must be a string of at most 60 chars")
+        # overlap validation: other buildings, then road bodies (centerline + half width)
+        for d in self.world_data["buildings"]:
+            if geometry.polys_overlap(poly, d["polygon"]):
+                raise ValueError(f"footprint overlaps building “{d['name']}”")
+        for r in self.world_data["roads"]:
+            rp = r["points"]
+            for a, b in zip(rp, rp[1:]):
+                if geometry.seg_poly_gap(a, b, poly) < r["width"] / 2:
+                    raise ValueError(f"footprint overlaps road “{r['name'] or r['class']}”")
+        if not name:
+            name = self.rng.choice(osm_world.BLD_PRE) + " " + self.rng.choice(osm_world.BLD_SUF[btype])
+        data = {"id": self._next_building_id, "name": name, "type": btype,
+                "floors": floors, "polygon": poly, "area_m2": round(area),
+                "center": [round(v, 1) for v in osm_world.centroid(poly)]}
+        self._next_building_id += 1
+        self.world_data["buildings"].append(data)
+        b = Building(data, self.rng)
+        b.prefill(self.clock_min)
+        self.buildings.append(b)
+
+    def _edit_remove_building(self, op):
+        b = self._find(self.buildings, self._as_int(op.get("id")))
+        if b is None:
+            raise ValueError(f"unknown building id {op.get('id')!r}")
+        self.buildings.remove(b)
+        self.world_data["buildings"] = [d for d in self.world_data["buildings"] if d["id"] != b.id]
+
     _EDIT_OPS = {
         "set_floors": _edit_set_floors,
         "spawn_car": _edit_spawn_car,
@@ -470,6 +527,8 @@ class Simulation:
         "remove_person": _edit_remove_person,
         "add_road": _edit_add_road,
         "remove_road": _edit_remove_road,
+        "add_building": _edit_add_building,
+        "remove_building": _edit_remove_building,
     }
 
     # ---------- API snapshots ----------

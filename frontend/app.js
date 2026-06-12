@@ -90,17 +90,19 @@ function zoomAt(sx, sy, factor) {
 /* ---------------- pointer input (pan / pinch / click / hover) ---------------- */
 const pointers = new Map();
 let dragStart = null, pinchDist = 0, moved = 0;
-const SNAP_M = 10;                       // road tool snap grid, meters
+const SNAP_M = 10;                       // build tools snap grid, meters
 const snap = v => Math.round(v / SNAP_M) * SNAP_M;
 let roadDraft = null;                    // {x0,y0,x1,y1} world meters while dragging
+let bldgDraft = null;                    // same shape; footprint rectangle corners
 canvas.addEventListener('pointerdown', e => {
   try { canvas.setPointerCapture(e.pointerId); } catch {}
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   moved = 0;
   if (pointers.size === 1) {
-    if (tool === 'road') {               // drag draws a road instead of panning
+    if (tool === 'road' || tool === 'bldg') {   // drag draws instead of panning
       const w = screenToWorld(e.clientX, e.clientY);
-      roadDraft = { x0: snap(w.wx), y0: snap(w.wy), x1: snap(w.wx), y1: snap(w.wy) };
+      const d = { x0: snap(w.wx), y0: snap(w.wy), x1: snap(w.wx), y1: snap(w.wy) };
+      if (tool === 'road') roadDraft = d; else bldgDraft = d;
       dragStart = null;
     } else {
       dragStart = { x: e.clientX, y: e.clientY, cx: cam.x, cy: cam.y };
@@ -110,7 +112,7 @@ canvas.addEventListener('pointerdown', e => {
     const pts = [...pointers.values()];
     pinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
     dragStart = null;
-    roadDraft = null;
+    roadDraft = bldgDraft = null;
   }
 });
 canvas.addEventListener('pointermove', e => {
@@ -119,9 +121,10 @@ canvas.addEventListener('pointermove', e => {
     moved += Math.abs(e.clientX - p.x) + Math.abs(e.clientY - p.y);
     p.x = e.clientX; p.y = e.clientY;
   }
-  if (pointers.size === 1 && roadDraft) {
+  const draft = roadDraft || bldgDraft;
+  if (pointers.size === 1 && draft) {
     const w = screenToWorld(e.clientX, e.clientY);
-    roadDraft.x1 = snap(w.wx); roadDraft.y1 = snap(w.wy);
+    draft.x1 = snap(w.wx); draft.y1 = snap(w.wy);
   } else if (pointers.size === 1 && dragStart) {
     cam.x = dragStart.cx - (e.clientX - dragStart.x) / cam.zoom;
     cam.y = dragStart.cy - (e.clientY - dragStart.y) / cam.zoom;
@@ -146,6 +149,16 @@ function endPointer(e) {
                  points: [[roadDraft.x0, roadDraft.y0], [roadDraft.x1, roadDraft.y1]] });
     }
     roadDraft = null;
+    return;
+  }
+  if (bldgDraft && pointers.size === 0) {
+    const x0 = Math.min(bldgDraft.x0, bldgDraft.x1), x1 = Math.max(bldgDraft.x0, bldgDraft.x1);
+    const y0 = Math.min(bldgDraft.y0, bldgDraft.y1), y1 = Math.max(bldgDraft.y0, bldgDraft.y1);
+    if (e.type === 'pointerup' && x1 - x0 >= SNAP_M && y1 - y0 >= SNAP_M) {
+      sendEdit({ op: 'add_building', type: bldgType,
+                 polygon: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] });
+    }
+    bldgDraft = null;
     return;
   }
   if (pointers.size === 1) {
@@ -491,7 +504,7 @@ function render(nowMs) {
     }
   }
 
-  // ghost preview while dragging a new road
+  // ghost previews while dragging a new road / building footprint
   if (roadDraft) {
     ctx.strokeStyle = 'rgba(95,212,168,0.75)';
     ctx.lineWidth = 6 * (HW + HH);       // residential width in iso px
@@ -499,6 +512,23 @@ function render(nowMs) {
     ctx.beginPath();
     ctx.moveTo(isoX(roadDraft.x0, roadDraft.y0), isoY(roadDraft.x0, roadDraft.y0));
     ctx.lineTo(isoX(roadDraft.x1, roadDraft.y1), isoY(roadDraft.x1, roadDraft.y1));
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  if (bldgDraft) {
+    const x0 = Math.min(bldgDraft.x0, bldgDraft.x1), x1 = Math.max(bldgDraft.x0, bldgDraft.x1);
+    const y0 = Math.min(bldgDraft.y0, bldgDraft.y1), y1 = Math.max(bldgDraft.y0, bldgDraft.y1);
+    ctx.beginPath();
+    [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].forEach(([wx, wy], i) => {
+      const x = isoX(wx, wy), y = isoY(wx, wy);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,201,77,0.30)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,201,77,0.9)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -575,19 +605,20 @@ function hitTest(sx, sy) {
 }
 const tooltip = document.getElementById('tooltip');
 function handleHover(sx, sy) {
-  if (tool === 'road') {                 // placing: no entity tooltips
+  if (tool === 'road' || tool === 'bldg') {   // placing: no entity tooltips
     canvas.classList.remove('pointing');
     tooltip.style.display = 'none';
     return;
   }
-  if (tool === 'dozer') {                // show which road would be bulldozed
+  if (tool === 'dozer') {                // show what would be bulldozed
     const { wx, wy } = screenToWorld(sx, sy);
-    const r = roadHit(wx, wy);
-    if (r) {
+    const b = buildingHit(wx, wy);
+    const r = b ? null : roadHit(wx, wy);
+    if (b || r) {
       tooltip.style.display = 'block';
       tooltip.style.left = (sx + 14) + 'px';
       tooltip.style.top = (sy + 10) + 'px';
-      tooltip.textContent = '🧨 ' + (r.name || r.class);
+      tooltip.textContent = '🧨 ' + (b ? b.name : (r.name || r.class));
     } else tooltip.style.display = 'none';
     return;
   }
@@ -620,6 +651,12 @@ function roadHit(wx, wy) {
   }
   return best && bestD <= Math.max(best.width / 2, 2.5) + 1.5 ? best : null;
 }
+function buildingHit(wx, wy) {           // ground-plane footprint hit (for the dozer)
+  if (!world) return null;
+  for (let i = world.buildings.length - 1; i >= 0; i--)
+    if (pointInPoly(wx, wy, world.buildings[i].polygon)) return world.buildings[i];
+  return null;
+}
 
 function handleClick(sx, sy) {
   if (tool === 'car' || tool === 'person') {   // armed spawn tool: place, don't select
@@ -628,28 +665,40 @@ function handleClick(sx, sy) {
                x: Math.round(wx * 10) / 10, y: Math.round(wy * 10) / 10 });
     return;
   }
-  if (tool === 'dozer') {                      // bulldoze the road under the click
+  if (tool === 'dozer') {                      // bulldoze building or road under the click
     const { wx, wy } = screenToWorld(sx, sy);
-    const r = roadHit(wx, wy);
-    if (r) sendEdit({ op: 'remove_road', id: r.id });
+    const b = buildingHit(wx, wy);
+    if (b) sendEdit({ op: 'remove_building', id: b.id });
+    else {
+      const r = roadHit(wx, wy);
+      if (r) sendEdit({ op: 'remove_road', id: r.id });
+    }
     return;
   }
-  if (tool === 'road') return;                 // roads are laid by dragging
+  if (tool === 'road' || tool === 'bldg') return;   // these are laid by dragging
   const hit = hitTest(sx, sy);
   if (hit) openDetail(hit.kind, hit.e.id);
   else closePopup();
 }
 
-/* ---------------- spawn toolbar ---------------- */
-let tool = null;                         // null | 'car' | 'person'
+/* ---------------- edit toolbar ---------------- */
+let tool = null;                         // null | 'car' | 'person' | 'road' | 'bldg' | 'dozer'
+let bldgType = 'res';
 function setTool(t) {
   tool = (tool === t) ? null : t;
   for (const b of document.querySelectorAll('#toolbar button'))
     b.classList.toggle('active', b.dataset.tool === tool);
+  document.getElementById('bldgTypes').style.display = tool === 'bldg' ? 'flex' : 'none';
   canvas.classList.toggle('placing', !!tool);
 }
 document.querySelectorAll('#toolbar button').forEach(b =>
   b.addEventListener('click', () => setTool(b.dataset.tool)));
+document.querySelectorAll('#bldgTypes button').forEach(b =>
+  b.addEventListener('click', () => {
+    bldgType = b.dataset.btype;
+    document.querySelectorAll('#bldgTypes button').forEach(x =>
+      x.classList.toggle('active', x === b));
+  }));
 
 /* ---------------- detail popup (backend results) ---------------- */
 const popup = document.getElementById('popup');
@@ -669,7 +718,7 @@ function closePopup() {
 }
 document.getElementById('popupClose').addEventListener('click', closePopup);
 window.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closePopup(); roadDraft = null; if (tool) setTool(tool); }
+  if (e.key === 'Escape') { closePopup(); roadDraft = bldgDraft = null; if (tool) setTool(tool); }
 });
 
 /* ---- edit commands (phase 1: building floors) ---- */
@@ -705,8 +754,8 @@ function nudgeFloors(delta) {
 document.getElementById('floorMinus').addEventListener('click', () => nudgeFloors(-1));
 document.getElementById('floorPlus').addEventListener('click', () => nudgeFloors(1));
 document.getElementById('entityRemove').addEventListener('click', () => {
-  if (openKind !== 'car' && openKind !== 'person') return;
-  sendEdit({ op: 'remove_' + openKind, id: openId });
+  if (!openKind) return;
+  sendEdit({ op: 'remove_' + openKind, id: openId });   // remove_building/_car/_person
   closePopup();
 });
 
@@ -724,7 +773,7 @@ async function refreshDetail() {
   const nowEl = document.getElementById('popupNow');
   title.textContent = d.name;
   popup.classList.toggle('editable', openKind === 'building');
-  popup.classList.toggle('removable', openKind === 'car' || openKind === 'person');
+  popup.classList.add('removable');     // every entity can be removed now
   if (openKind === 'building') {
     curFloors = d.floors;
     document.getElementById('floorVal').textContent = d.floors;

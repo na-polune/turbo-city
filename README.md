@@ -141,11 +141,17 @@ Implemented ops:
   snaps to a 10 m grid (drag consecutive segments from the same point to draw a polyline —
   shared endpoints merge into one graph node, so they connect). Street graphs rebuild and
   agents re-seat automatically.
-- `remove_road` `{id}` — arm **Doze**, hover to see the target road, click to bulldoze.
+- `add_building` `{polygon, type?, floors?, name?}` — arm **+ Bldg**, pick a type
+  (Res/Office/Shop), then drag a footprint; it snaps to the grid. The server rejects
+  footprints that overlap another building or a road body (centerline ± half width);
+  unnamed buildings get a generated name and per-type default floors.
+- `remove_building` `{id}` — **Doze** click, or the **Remove** button in any popup
+  (buildings, cars and people are all removable now).
+- `remove_road` `{id}` — arm **Doze**, hover to see the target, click to bulldoze.
   Removing the last drivable/walkable road is rejected while cars/people exist (the
   reason flashes in the toast).
 
-Planned next: building placement, save/load, destination routing.
+Planned next: save/load, destination routing, undo.
 
 ## Current simplifications
 

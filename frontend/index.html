@@ -39,7 +39,10 @@
     color:var(--text-dim); padding:1px 0; }
   #hud .stat b{ color:var(--text); font-variant-numeric:tabular-nums; }
   #hud .tools{ display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
-  #hud .tools button{ min-width:46%; }
+  #hud .tools button{ min-width:30%; }
+  #bldgTypes{ margin-top:6px; }
+  #hud #bldgTypes button.active{ background:var(--accent); border-color:var(--accent);
+    color:#1c1605; font-weight:600; }
   #hud .tools button{ flex:1; border:1px solid var(--glass-border); background:rgba(255,255,255,0.06);
     color:var(--text-dim); font:inherit; font-size:12px; padding:4px 6px; border-radius:8px; cursor:pointer; }
   #hud .tools button:hover{ color:var(--text); }
@@ -112,7 +115,13 @@
     <button data-tool="car" title="Arm, then click a road to add a car (Esc to cancel)">+ 🚗 Car</button>
     <button data-tool="person" title="Arm, then click a road to add a person (Esc to cancel)">+ 🚶 Person</button>
     <button data-tool="road" title="Arm, then drag on the map to lay a road (snaps to a 10 m grid)">+ 🛣 Road</button>
-    <button data-tool="dozer" title="Arm, then click a road to bulldoze it">🧨 Doze</button>
+    <button data-tool="bldg" title="Pick a type below, then drag a footprint on the map">+ 🏢 Bldg</button>
+    <button data-tool="dozer" title="Arm, then click a building or road to bulldoze it">🧨 Doze</button>
+  </div>
+  <div class="tools" id="bldgTypes" style="display:none">
+    <button data-btype="res" class="active">🏠 Res</button>
+    <button data-btype="office">🏢 Office</button>
+    <button data-btype="shop">🛍 Shop</button>
   </div>
   <div class="backend" id="backendBadge"><span class="dot"></span><span id="backendText">connecting…</span></div>
 </div>
