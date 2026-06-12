@@ -1,15 +1,23 @@
-"""City simulation core (no web code) on a real OSM street network.
+"""City simulation core (no web code) on a street network.
 
-World geometry comes from backend.osm_world (Cambridge, Market Square).
+Which world to load — and everything about it — comes from the input/ folder
+(see backend.config): "world": "map" runs the real OSM area from input/map.json,
+"world": "grid" runs the hand-made test scene from input/grid.json.
 Agents random-walk the street graph (edge to edge, avoid reversing) —
 same design as the original toy version, just on real geometry in meters.
 """
 import math
 import random
 
-from .osm_world import build_world
+from . import config, grid_world, osm_world
 
-# ---- time ----
+WORLD_BUILDERS = {
+    "map": osm_world.build_world,
+    "grid": grid_world.build_world,
+}
+
+# ---- time (defaults; overridable per run via input/config.json) ----
+TICK_HZ = 10              # simulation ticks per real second
 SIM_MIN_PER_SEC = 1.0     # 1 real second = 1 sim minute (full day in 24 real minutes)
 SAMPLE_MIN = 10           # energy / pedometer sample every N sim minutes
 HISTORY_LEN = 144         # 24 h * 6 samples/h
@@ -19,8 +27,9 @@ CAR_SPD_LEN = 120         # speed ring buffer
 CAR_SPD_DT = 0.5          # sample every 0.5 real seconds (60 s window)
 STEPS_PER_M = 1.35        # pedometer scale
 
-N_CARS = 8
-N_PEOPLE = 15
+# ---- agent speed defaults (overridable per world via input/{map,grid}.json) ----
+CAR_SPEED_MPS = (6.0, 9.0)        # [min, max] cruising speed, m/s
+PERSON_SPEED_MPS = (1.1, 1.7)     # [min, max] walking speed, m/s
 
 CAR_NAMES = ['Sedan', 'Hatchback', 'Coupe', 'Van', 'Pickup', 'Mini', 'Wagon', 'Taxi']
 CAR_COLORS = ['#d4453a', '#3a6fd4', '#e8e8ea', '#23252b', '#f2c14e', '#5fa052', '#9b59b6', '#e67e22']
@@ -167,12 +176,13 @@ def largest_component(adj):
 
 
 class Car(Walker):
-    def __init__(self, i, graph, rng):
+    def __init__(self, i, graph, rng, speed_range=CAR_SPEED_MPS):
         super().__init__(graph, rng, lateral=1.5)
         self.id = i
         self.name = f"{CAR_NAMES[i % len(CAR_NAMES)]} {i + 1}"
         self.color = CAR_COLORS[i % len(CAR_COLORS)]
-        self.base_speed = 6.0 + rng.random() * 3.0   # m/s
+        lo, hi = speed_range
+        self.base_speed = lo + rng.random() * (hi - lo)   # m/s
         self.speed = self.base_speed
         self.distance_m = 0.0
         self.spd = [0.0] * CAR_SPD_LEN
@@ -205,12 +215,13 @@ class Car(Walker):
 
 
 class Person(Walker):
-    def __init__(self, i, graph, rng):
+    def __init__(self, i, graph, rng, speed_range=PERSON_SPEED_MPS):
         super().__init__(graph, rng, lateral=0.8)
         self.id = i
         self.name = f"{rng.choice(FIRST)} {rng.choice(LAST)}"
         self.shirt = SHIRTS[i % len(SHIRTS)]
-        self.speed = 1.1 + rng.random() * 0.6        # m/s
+        lo, hi = speed_range
+        self.speed = lo + rng.random() * (hi - lo)        # m/s
         self.distance_m = 0.0
         self.steps = [0.0] * HISTORY_LEN             # meters walked per 10-min bucket
         self.step_idx = 0
@@ -242,16 +253,28 @@ class Person(Walker):
 
 
 class Simulation:
-    def __init__(self, seed=20260612):
+    def __init__(self, cfg=None):
+        cfg = cfg or config.load_config()
+        self.mode = cfg["world"]
+        if self.mode not in WORLD_BUILDERS:
+            raise ValueError(f"unknown world {self.mode!r}, expected one of {sorted(WORLD_BUILDERS)}")
+        seed = cfg.get("seed", 0)
         self.rng = random.Random(seed)
-        self.clock_min = 9 * 60.0      # start at 09:00
+        self.clock_min = cfg.get("start_hour", 9) * 60.0
         self.last_sample_min = self.clock_min
         self.car_sample_acc = 0.0
+        self.sim_min_per_sec = cfg.get("sim_min_per_sec", SIM_MIN_PER_SEC)
+        self.tick_interval = 1.0 / cfg.get("tick_hz", TICK_HZ)   # seconds between ticks
 
-        self.world_data = build_world(seed)
-        self.buildings = [Building(b, self.rng) for b in self.world_data["buildings"]]
-        self.cars = [Car(i, self.world_data["car_graph"], self.rng) for i in range(N_CARS)]
-        self.people = [Person(i, self.world_data["ped_graph"], self.rng) for i in range(N_PEOPLE)]
+        spec = config.load_world_spec(self.mode)
+        w = self.world_data = WORLD_BUILDERS[self.mode](spec, seed)
+        car_speed = tuple(w.get("car_speed_mps") or CAR_SPEED_MPS)
+        person_speed = tuple(w.get("person_speed_mps") or PERSON_SPEED_MPS)
+        self.buildings = [Building(b, self.rng) for b in w["buildings"]]
+        self.cars = [Car(i, w["car_graph"], self.rng, car_speed)
+                     for i in range(w["n_cars"])]
+        self.people = [Person(i, w["ped_graph"], self.rng, person_speed)
+                       for i in range(w["n_people"])]
 
         for b in self.buildings:
             b.prefill(self.clock_min)
@@ -261,7 +284,7 @@ class Simulation:
 
     def tick(self, dt):
         """Advance the world by dt real seconds."""
-        self.clock_min += dt * SIM_MIN_PER_SEC
+        self.clock_min += dt * self.sim_min_per_sec
         hour = (self.clock_min % 1440) / 60.0
 
         for c in self.cars:
@@ -289,6 +312,7 @@ class Simulation:
         """Static layout for the frontend (graphs stay server-side)."""
         w = self.world_data
         return {
+            "mode": self.mode,
             "name": w["name"],
             "radius_m": w["radius_m"],
             "buildings": [{

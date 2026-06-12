@@ -1,7 +1,9 @@
 """Load a real area from OpenStreetMap and convert it to simulation world data.
 
-Queries the Overpass API directly (stdlib only, no osmnx/geopandas) and caches
-the raw response in backend/data/ so the network is hit only once.
+The area (name, center, radius, cache file, agent counts) comes from the spec
+dict loaded from input/map.json — see backend.config. Queries the Overpass API
+directly (stdlib only, no osmnx/geopandas) and caches the raw response in
+backend/data/ so the network is hit only once.
 
 Run standalone to check the data:  python -m backend.osm_world
 """
@@ -11,11 +13,7 @@ import random
 import urllib.request
 from pathlib import Path
 
-# ---- area config ----
-CENTER = (52.2055, 0.1187)        # Cambridge UK, Market Square
-RADIUS_M = 250
-CACHE = Path(__file__).resolve().parent / "data" / "cambridge_market_square.json"
-AREA_NAME = "Cambridge · Market Square"
+DATA_DIR = Path(__file__).resolve().parent / "data"
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
@@ -43,9 +41,9 @@ RES_TAGS = {'residential', 'house', 'apartments', 'dormitory', 'terrace', 'semid
 SHOP_TAGS = {'retail', 'commercial', 'supermarket', 'kiosk'}
 
 
-def fetch_overpass():
-    lat, lon = CENTER
-    around = f"(around:{RADIUS_M},{lat},{lon})"
+def fetch_overpass(center, radius_m):
+    lat, lon = center
+    around = f"(around:{radius_m},{lat},{lon})"
     query = f"""
 [out:json][timeout:60];
 (
@@ -68,18 +66,19 @@ out skel qt;
         return json.load(r)
 
 
-def load_raw():
-    if CACHE.exists():
-        return json.loads(CACHE.read_text(encoding="utf-8"))
-    data = fetch_overpass()
-    CACHE.parent.mkdir(parents=True, exist_ok=True)
-    CACHE.write_text(json.dumps(data), encoding="utf-8")
+def load_raw(spec):
+    cache = DATA_DIR / spec["cache_file"]
+    if cache.exists():
+        return json.loads(cache.read_text(encoding="utf-8"))
+    data = fetch_overpass(spec["center"], spec["radius_m"])
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(data), encoding="utf-8")
     return data
 
 
-def project(lat, lon):
+def project(lat, lon, center):
     """lat/lon -> local meters; y grows southward so the iso view reads naturally."""
-    lat0, lon0 = CENTER
+    lat0, lon0 = center
     x = (lon - lon0) * 111320 * math.cos(math.radians(lat0))
     y = (lat0 - lat) * 110540
     return x, y
@@ -128,16 +127,17 @@ def default_floors(btype, tags, rng):
             "office": rng.randint(3, 5)}[btype]
 
 
-def build_world(seed=20260612):
+def build_world(spec, seed=0):
     """Parse cached/downloaded OSM data into simulation-ready structures."""
     rng = random.Random(seed)
-    raw = load_raw()
+    raw = load_raw(spec)
+    center = tuple(spec["center"])
     nodes = {}        # osm node id -> (x, y)
     node_tags = {}    # osm node id -> tags
     ways = []
     for el in raw["elements"]:
         if el["type"] == "node":
-            nodes[el["id"]] = project(el["lat"], el["lon"])
+            nodes[el["id"]] = project(el["lat"], el["lon"], center)
             if el.get("tags"):
                 node_tags[el["id"]] = el["tags"]
         elif el["type"] == "way":
@@ -211,8 +211,12 @@ def build_world(seed=20260612):
         lamps = synthesize_lamps(roads, spacing=30)
 
     return {
-        "name": AREA_NAME,
-        "radius_m": RADIUS_M,
+        "name": spec["name"],
+        "radius_m": spec["radius_m"],
+        "n_cars": spec["n_cars"],
+        "n_people": spec["n_people"],
+        "car_speed_mps": spec.get("car_speed_mps"),
+        "person_speed_mps": spec.get("person_speed_mps"),
         "buildings": buildings,
         "roads": roads,
         "parks": parks,
@@ -249,9 +253,11 @@ def synthesize_lamps(roads, spacing=30):
 
 
 if __name__ == "__main__":
-    cached = CACHE.exists()
-    w = build_world()
-    print(f"source: {'cache' if cached else 'overpass download'} ({CACHE.name})")
+    from .config import load_world_spec
+    spec = load_world_spec("map")
+    cached = (DATA_DIR / spec["cache_file"]).exists()
+    w = build_world(spec)
+    print(f"source: {'cache' if cached else 'overpass download'} ({spec['cache_file']})")
     print(f"area: {w['name']}, radius {w['radius_m']} m")
     print(f"buildings: {len(w['buildings'])}")
     print(f"roads: {len(w['roads'])} "

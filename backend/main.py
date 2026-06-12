@@ -9,16 +9,15 @@ from fastapi.staticfiles import StaticFiles
 from .simulation import Simulation
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
-TICK_INTERVAL = 0.1   # 10 Hz
 
-sim = Simulation()
+sim = Simulation()    # world choice + settings come from input/config.json
 
 
 async def run_simulation():
     loop = asyncio.get_running_loop()
     last = loop.time()
     while True:
-        await asyncio.sleep(TICK_INTERVAL)
+        await asyncio.sleep(sim.tick_interval)   # tick rate from input/config.json
         now = loop.time()
         sim.tick(min(now - last, 1.0))   # cap dt if the loop stalls
         last = now
