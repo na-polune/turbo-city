@@ -116,11 +116,36 @@ House, a car or a person to query the backend. To use a **different area**, chan
 
 | Route | Returns |
 |---|---|
-| `GET /api/world` | static layout: building polygons, roads, lamps, parks (fetched once) |
-| `GET /api/state` | dynamic snapshot: clock, car/person positions + headings, total load |
+| `GET /api/world` | static layout: building polygons, roads, lamps, parks; includes `world_rev` |
+| `GET /api/state` | dynamic snapshot: clock, car/person positions + headings, total load, `world_rev` |
+| `POST /api/edit` | apply an edit command, e.g. `{"op": "set_floors", "id": 0, "floors": 5}`; bumps `world_rev` |
 | `GET /api/building/{id}` | 24 h energy history + current kW + occupancy |
 | `GET /api/car/{id}` | speed history (last 60 s) + distance |
 | `GET /api/person/{id}` | steps/hour history (24 h) + distance |
+
+## Editing (work in progress, SimCity direction)
+
+The world is editable at runtime through `POST /api/edit` commands; every accepted edit
+bumps `world_rev`, and clients refetch `/api/world` when they see the revision change in
+`/api/state`. Edits are in-memory for now (restart reloads `input/`).
+
+Implemented ops:
+
+- `set_floors` `{id, floors}` — click a building, use the − / + control in the popup;
+  height, energy model and grid load update live.
+- `spawn_car` / `spawn_person` `{x?, y?}` — arm **+ Car** / **+ Person** in the HUD, then
+  click the map; the agent spawns on the nearest road node (omit x/y for random). Agent
+  ids are stable across removals.
+- `remove_car` / `remove_person` `{id}` — click a car or person, then **Remove** in the popup.
+- `add_road` `{points, class?, name?}` — arm **+ Road**, then drag on the map; the segment
+  snaps to a 10 m grid (drag consecutive segments from the same point to draw a polyline —
+  shared endpoints merge into one graph node, so they connect). Street graphs rebuild and
+  agents re-seat automatically.
+- `remove_road` `{id}` — arm **Doze**, hover to see the target road, click to bulldoze.
+  Removing the last drivable/walkable road is rejected while cars/people exist (the
+  reason flashes in the toast).
+
+Planned next: building placement, save/load, destination routing.
 
 ## Current simplifications
 

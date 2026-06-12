@@ -33,9 +33,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="City Energy Analysis", lifespan=lifespan)
 
 
-def check_id(entity_id: int, count: int):
-    if not 0 <= entity_id < count:
+def or_404(detail):
+    if detail is None:
         raise HTTPException(status_code=404, detail="Unknown entity id")
+    return detail
 
 
 @app.get("/api/world")
@@ -48,22 +49,28 @@ async def state():
     return sim.state()
 
 
+@app.post("/api/edit")
+async def edit(op: dict):
+    """Apply one edit command (see Simulation.apply_edit); bumps world_rev."""
+    try:
+        return sim.apply_edit(op)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/building/{building_id}")
 async def building(building_id: int):
-    check_id(building_id, len(sim.buildings))
-    return sim.building_detail(building_id)
+    return or_404(sim.building_detail(building_id))
 
 
 @app.get("/api/car/{car_id}")
 async def car(car_id: int):
-    check_id(car_id, len(sim.cars))
-    return sim.car_detail(car_id)
+    return or_404(sim.car_detail(car_id))
 
 
 @app.get("/api/person/{person_id}")
 async def person(person_id: int):
-    check_id(person_id, len(sim.people))
-    return sim.person_detail(person_id)
+    return or_404(sim.person_detail(person_id))
 
 
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

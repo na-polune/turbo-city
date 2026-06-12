@@ -11,6 +11,38 @@ Run standalone to check the data:  python -m backend.grid_world
 from .osm_world import ROAD_CLASSES, centroid, shoelace_area
 
 
+def build_graphs(roads):
+    """Car/ped graphs from road polylines (any world).
+
+    Points with equal coordinates (rounded to 0.1 m) merge into one node, so
+    roads that share an endpoint or cross at a common point connect. Used both
+    at build time and to rebuild after road edits.
+    """
+    car_adj, ped_adj, nodes = {}, {}, {}
+    coord_to_id = {}      # (x, y) -> integer node id (tuples can't be node ids)
+
+    def node_id(p):
+        key = (round(p[0], 1), round(p[1], 1))
+        if key not in coord_to_id:
+            coord_to_id[key] = len(coord_to_id)
+            nodes[coord_to_id[key]] = (float(p[0]), float(p[1]))
+        return coord_to_id[key]
+
+    for r in roads:
+        ids = [node_id(p) for p in r["points"]]
+        for a, b in zip(ids, ids[1:]):
+            if a == b:
+                continue              # zero-length segment
+            if r["drivable"]:
+                car_adj.setdefault(a, []).append((b, r["width"]))
+                car_adj.setdefault(b, []).append((a, r["width"]))
+            if r["class"] != "steps":
+                ped_adj.setdefault(a, []).append(b)
+                ped_adj.setdefault(b, []).append(a)
+    return {"car_graph": {"nodes": nodes, "adj": car_adj},
+            "ped_graph": {"nodes": nodes, "adj": ped_adj}}
+
+
 def build_world(spec, seed=0):
     buildings = []
     for i, b in enumerate(spec.get("buildings", [])):
@@ -25,40 +57,24 @@ def build_world(spec, seed=0):
             "center": [round(v, 1) for v in centroid(poly)],
         })
 
-    roads, car_adj, ped_adj, nodes = [], {}, {}, {}
-    coord_to_id = {}      # (x, y) -> integer node id (osm-style; tuples can't be ids)
-
-    def node_id(p):
-        key = (round(p[0], 1), round(p[1], 1))   # same coords -> same node
-        if key not in coord_to_id:
-            coord_to_id[key] = len(coord_to_id)
-            nodes[coord_to_id[key]] = p
-        return coord_to_id[key]
-
-    for r in spec.get("roads", []):
+    roads = []
+    for i, r in enumerate(spec.get("roads", [])):
         cls = r.get("class", "residential")
         if cls not in ROAD_CLASSES:
             raise ValueError(f"input/grid.json: unknown road class {cls!r}, "
                              f"expected one of {sorted(ROAD_CLASSES)}")
         width, drivable = ROAD_CLASSES[cls]
-        pts = [(float(x), float(y)) for x, y in r["points"]]
         roads.append({
+            "id": i,
             "name": r.get("name", ""),
             "class": cls, "width": width, "drivable": drivable,
-            "points": [[x, y] for x, y in pts],
+            "points": [[float(x), float(y)] for x, y in r["points"]],
         })
-        ids = [node_id(p) for p in pts]
-        for a, b in zip(ids, ids[1:]):
-            if drivable:
-                car_adj.setdefault(a, []).append((b, width))
-                car_adj.setdefault(b, []).append((a, width))
-            if cls != "steps":
-                ped_adj.setdefault(a, []).append(b)
-                ped_adj.setdefault(b, []).append(a)
+    graphs = build_graphs(roads)
 
-    if spec["n_cars"] > 0 and not car_adj:
+    if spec["n_cars"] > 0 and not graphs["car_graph"]["adj"]:
         raise ValueError("input/grid.json: n_cars > 0 needs at least one drivable road")
-    if spec["n_people"] > 0 and not ped_adj:
+    if spec["n_people"] > 0 and not graphs["ped_graph"]["adj"]:
         raise ValueError("input/grid.json: n_people > 0 needs at least one walkable road")
 
     return {
@@ -74,8 +90,8 @@ def build_world(spec, seed=0):
         "water": spec.get("water", []),
         "lamps": [[float(x), float(y)] for x, y in spec.get("lamps", [])],
         "signals": spec.get("signals", []),
-        "car_graph": {"nodes": nodes, "adj": car_adj},
-        "ped_graph": {"nodes": nodes, "adj": ped_adj},
+        "car_graph": graphs["car_graph"],
+        "ped_graph": graphs["ped_graph"],
     }
 
 

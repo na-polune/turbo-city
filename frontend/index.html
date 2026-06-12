@@ -38,6 +38,14 @@
   #hud .stat{ display:flex; justify-content:space-between; gap:18px; font-size:13px;
     color:var(--text-dim); padding:1px 0; }
   #hud .stat b{ color:var(--text); font-variant-numeric:tabular-nums; }
+  #hud .tools{ display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+  #hud .tools button{ min-width:46%; }
+  #hud .tools button{ flex:1; border:1px solid var(--glass-border); background:rgba(255,255,255,0.06);
+    color:var(--text-dim); font:inherit; font-size:12px; padding:4px 6px; border-radius:8px; cursor:pointer; }
+  #hud .tools button:hover{ color:var(--text); }
+  #hud .tools button.active{ background:var(--accent2); border-color:var(--accent2);
+    color:#0c2018; font-weight:600; }
+  #city.placing{ cursor:crosshair; }
   #hud .backend{ margin-top:8px; font-size:12px; color:var(--text-dim);
     display:flex; align-items:center; gap:7px; }
   #hud .backend .dot{ width:9px; height:9px; border-radius:50%; background:#888; flex:none; }
@@ -55,6 +63,20 @@
   #chart{ width:100%; height:180px; display:block; border-radius:8px; background:rgba(8,12,28,0.6); }
   #popupNow{ margin:8px 0 0; font-size:14px; }
   #popupNow b{ color:var(--accent); font-size:18px; font-variant-numeric:tabular-nums; }
+  #popupEdit{ display:none; margin:10px 0 0; align-items:center; gap:10px; font-size:13px;
+    color:var(--text-dim); }
+  #popup.editable #popupEdit{ display:flex; }
+  #popupEdit button{ width:26px; height:26px; border-radius:7px; border:1px solid var(--glass-border);
+    background:rgba(255,255,255,0.08); color:var(--text); font-size:15px; cursor:pointer; line-height:1; }
+  #popupEdit button:hover{ background:rgba(255,255,255,0.18); }
+  #popupEdit button:disabled{ opacity:0.4; cursor:default; }
+  #popupEdit b{ min-width:22px; text-align:center; color:var(--text);
+    font-size:15px; font-variant-numeric:tabular-nums; }
+  #popupActions{ display:none; margin:10px 0 0; }
+  #popup.removable #popupActions{ display:flex; }
+  #popupActions button{ border:1px solid rgba(232,69,69,0.5); background:rgba(232,69,69,0.14);
+    color:#ff9d9d; font:inherit; font-size:12.5px; padding:5px 14px; border-radius:8px; cursor:pointer; }
+  #popupActions button:hover{ background:rgba(232,69,69,0.32); color:#fff; }
 
   /* tooltip */
   #tooltip{ position:fixed; pointer-events:none; z-index:30; display:none;
@@ -86,6 +108,12 @@
   <div class="stat"><span>Vehicles</span><b id="statCars">–</b></div>
   <div class="stat"><span>People</span><b id="statPop">–</b></div>
   <div class="stat"><span>Grid load</span><b id="statLoad">–</b></div>
+  <div class="tools" id="toolbar">
+    <button data-tool="car" title="Arm, then click a road to add a car (Esc to cancel)">+ 🚗 Car</button>
+    <button data-tool="person" title="Arm, then click a road to add a person (Esc to cancel)">+ 🚶 Person</button>
+    <button data-tool="road" title="Arm, then drag on the map to lay a road (snaps to a 10 m grid)">+ 🛣 Road</button>
+    <button data-tool="dozer" title="Arm, then click a road to bulldoze it">🧨 Doze</button>
+  </div>
   <div class="backend" id="backendBadge"><span class="dot"></span><span id="backendText">connecting…</span></div>
 </div>
 
@@ -95,6 +123,15 @@
   <p class="sub" id="popupSub"></p>
   <canvas id="chart" width="640" height="360"></canvas>
   <p id="popupNow"></p>
+  <div id="popupEdit">
+    <span>Floors</span>
+    <button id="floorMinus" aria-label="Remove a floor">−</button>
+    <b id="floorVal">–</b>
+    <button id="floorPlus" aria-label="Add a floor">+</button>
+  </div>
+  <div id="popupActions">
+    <button id="entityRemove">🗑 Remove</button>
+  </div>
 </div>
 
 <div id="toast" class="panel"><span class="dot"></span><span>Drag to pan, scroll to zoom. Click any <b>building</b>, <b>car</b> or <b>person</b>; results come from the Python backend.</span></div>

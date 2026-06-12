@@ -61,6 +61,11 @@ OCC = {
 PEAK_COEF = {'res': 5, 'office': 9, 'shop': 13}
 TILE_M2 = 25      # the reference model was per 5x5 m tile
 
+# ---- edit limits ----
+MAX_FLOORS = 20
+MAX_CARS = 50
+MAX_PEOPLE = 100
+
 
 class Building:
     def __init__(self, data, rng):
@@ -71,13 +76,20 @@ class Building:
         self.floors = data["floors"]
         self.area_m2 = data["area_m2"]
         self.center = data["center"]
-        tiles = self.area_m2 / TILE_M2
-        self.base = 2 + self.floors * 1.4 * tiles
-        self.peak = self.floors * PEAK_COEF[self.type] * tiles
+        self._recompute_coeffs()
         self.noise = 0.0
         self.load_kw = 0.0
         self.history = [0.0] * HISTORY_LEN
         self.hist_idx = 0
+
+    def _recompute_coeffs(self):
+        tiles = self.area_m2 / TILE_M2
+        self.base = 2 + self.floors * 1.4 * tiles
+        self.peak = self.floors * PEAK_COEF[self.type] * tiles
+
+    def set_floors(self, floors):
+        self.floors = floors
+        self._recompute_coeffs()    # load changes from the next tick on
 
     def occupancy(self, hour):
         return piecewise(OCC[self.type], hour)
@@ -111,14 +123,26 @@ class Building:
 class Walker:
     """Random-walk along a graph: edge (a -> b) with progress in meters."""
 
-    def __init__(self, graph, rng, lateral=0.0):
-        self.nodes = graph["nodes"]
-        self.adj = graph["adj"]
+    def __init__(self, graph, rng, lateral=0.0, near=None):
         self.rng = rng
         self.lateral = lateral          # right-hand offset from the centerline, meters
-        start = rng.choice(largest_component(self.adj))
+        self._place(graph, near)
+
+    def _place(self, graph, near=None):
+        self.nodes = graph["nodes"]
+        self.adj = graph["adj"]
+        comp = largest_component(self.adj)
+        if near is not None:            # start at the closest reachable node
+            start = min(comp, key=lambda n: (self.nodes[n][0] - near[0]) ** 2 +
+                                            (self.nodes[n][1] - near[1]) ** 2)
+        else:
+            start = self.rng.choice(comp)
         self.prev = start
-        self._set_edge(start, rng.choice(self.adj[start]))
+        self._set_edge(start, self.rng.choice(self.adj[start]))
+
+    def reseat(self, graph):
+        """Re-home onto a rebuilt graph near the current position (road edits)."""
+        self._place(graph, self.pos())
 
     def _neighbor_id(self, entry):
         return entry[0] if isinstance(entry, (list, tuple)) else entry
@@ -176,8 +200,8 @@ def largest_component(adj):
 
 
 class Car(Walker):
-    def __init__(self, i, graph, rng, speed_range=CAR_SPEED_MPS):
-        super().__init__(graph, rng, lateral=1.5)
+    def __init__(self, i, graph, rng, speed_range=CAR_SPEED_MPS, near=None):
+        super().__init__(graph, rng, lateral=1.5, near=near)
         self.id = i
         self.name = f"{CAR_NAMES[i % len(CAR_NAMES)]} {i + 1}"
         self.color = CAR_COLORS[i % len(CAR_COLORS)]
@@ -215,8 +239,8 @@ class Car(Walker):
 
 
 class Person(Walker):
-    def __init__(self, i, graph, rng, speed_range=PERSON_SPEED_MPS):
-        super().__init__(graph, rng, lateral=0.8)
+    def __init__(self, i, graph, rng, speed_range=PERSON_SPEED_MPS, near=None):
+        super().__init__(graph, rng, lateral=0.8, near=near)
         self.id = i
         self.name = f"{rng.choice(FIRST)} {rng.choice(LAST)}"
         self.shirt = SHIRTS[i % len(SHIRTS)]
@@ -265,16 +289,20 @@ class Simulation:
         self.car_sample_acc = 0.0
         self.sim_min_per_sec = cfg.get("sim_min_per_sec", SIM_MIN_PER_SEC)
         self.tick_interval = 1.0 / cfg.get("tick_hz", TICK_HZ)   # seconds between ticks
+        self.world_rev = 0    # bumped on every edit; clients refetch /api/world on change
 
         spec = config.load_world_spec(self.mode)
         w = self.world_data = WORLD_BUILDERS[self.mode](spec, seed)
-        car_speed = tuple(w.get("car_speed_mps") or CAR_SPEED_MPS)
-        person_speed = tuple(w.get("person_speed_mps") or PERSON_SPEED_MPS)
+        self._car_speed = tuple(w.get("car_speed_mps") or CAR_SPEED_MPS)
+        self._person_speed = tuple(w.get("person_speed_mps") or PERSON_SPEED_MPS)
         self.buildings = [Building(b, self.rng) for b in w["buildings"]]
-        self.cars = [Car(i, w["car_graph"], self.rng, car_speed)
+        self.cars = [Car(i, w["car_graph"], self.rng, self._car_speed)
                      for i in range(w["n_cars"])]
-        self.people = [Person(i, w["ped_graph"], self.rng, person_speed)
+        self.people = [Person(i, w["ped_graph"], self.rng, self._person_speed)
                        for i in range(w["n_people"])]
+        self._next_car_id = len(self.cars)        # ids stay unique across removals
+        self._next_person_id = len(self.people)
+        self._next_road_id = len(w["roads"])
 
         for b in self.buildings:
             b.prefill(self.clock_min)
@@ -307,12 +335,150 @@ class Simulation:
             for c in self.cars:
                 c.sample_speed()
 
+    # ---------- edits ----------
+    def apply_edit(self, op):
+        """Apply one edit command, e.g. {"op": "set_floors", "id": 0, "floors": 5}.
+
+        Handlers mutate both the live objects and world_data so /api/world stays
+        in sync. Raises ValueError on bad input (-> HTTP 400). The tick loop and
+        request handlers share one asyncio loop, so edits never race a tick.
+        """
+        kind = op.get("op")
+        handler = self._EDIT_OPS.get(kind)
+        if handler is None:
+            raise ValueError(f"unknown edit op {kind!r}, expected one of {sorted(self._EDIT_OPS)}")
+        handler(self, op)
+        self.world_rev += 1
+        return {"ok": True, "world_rev": self.world_rev}
+
+    @staticmethod
+    def _as_int(v):
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+    @staticmethod
+    def _find(seq, eid):
+        return next((e for e in seq if e.id == eid), None)
+
+    @staticmethod
+    def _spawn_point(op):
+        """Optional spawn location {x, y} in meters; None spawns at random."""
+        x, y = op.get("x"), op.get("y")
+        if x is None and y is None:
+            return None
+        num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+        if not (num(x) and num(y)):
+            raise ValueError("x and y must both be numbers (meters), or both omitted")
+        return (float(x), float(y))
+
+    def _edit_set_floors(self, op):
+        b = self._find(self.buildings, self._as_int(op.get("id")))
+        if b is None:
+            raise ValueError(f"unknown building id {op.get('id')!r}")
+        floors = self._as_int(op.get("floors"))
+        if floors is None or not 1 <= floors <= MAX_FLOORS:
+            raise ValueError(f"floors must be an integer in 1..{MAX_FLOORS}")
+        b.set_floors(floors)
+        self.world_data["buildings"][b.id]["floors"] = floors
+
+    def _edit_spawn_car(self, op):
+        if len(self.cars) >= MAX_CARS:
+            raise ValueError(f"car limit reached ({MAX_CARS})")
+        if not self.world_data["car_graph"]["adj"]:
+            raise ValueError("no drivable road to spawn a car on")
+        c = Car(self._next_car_id, self.world_data["car_graph"], self.rng,
+                self._car_speed, near=self._spawn_point(op))
+        self._next_car_id += 1
+        self.cars.append(c)
+
+    def _edit_spawn_person(self, op):
+        if len(self.people) >= MAX_PEOPLE:
+            raise ValueError(f"person limit reached ({MAX_PEOPLE})")
+        if not self.world_data["ped_graph"]["adj"]:
+            raise ValueError("no walkable road to spawn a person on")
+        p = Person(self._next_person_id, self.world_data["ped_graph"], self.rng,
+                   self._person_speed, near=self._spawn_point(op))
+        p.prefill()
+        self._next_person_id += 1
+        self.people.append(p)
+
+    def _edit_remove_car(self, op):
+        c = self._find(self.cars, self._as_int(op.get("id")))
+        if c is None:
+            raise ValueError(f"unknown car id {op.get('id')!r}")
+        self.cars.remove(c)
+
+    def _edit_remove_person(self, op):
+        p = self._find(self.people, self._as_int(op.get("id")))
+        if p is None:
+            raise ValueError(f"unknown person id {op.get('id')!r}")
+        self.people.remove(p)
+
+    def _apply_roads(self, roads):
+        """Swap in a new roads list: rebuild graphs, validate, re-seat agents."""
+        graphs = grid_world.build_graphs(roads)
+        if self.cars and not graphs["car_graph"]["adj"]:
+            raise ValueError("cars exist but no drivable road would remain — remove the cars first")
+        if self.people and not graphs["ped_graph"]["adj"]:
+            raise ValueError("people exist but no walkable road would remain — remove the people first")
+        self.world_data["roads"] = roads
+        self.world_data["car_graph"] = graphs["car_graph"]
+        self.world_data["ped_graph"] = graphs["ped_graph"]
+        for c in self.cars:
+            c.reseat(graphs["car_graph"])
+        for p in self.people:
+            p.reseat(graphs["ped_graph"])
+
+    def _edit_add_road(self, op):
+        cls = op.get("class", "residential")
+        if cls not in osm_world.ROAD_CLASSES:
+            raise ValueError(f"unknown road class {cls!r}, "
+                             f"expected one of {sorted(osm_world.ROAD_CLASSES)}")
+        pts = op.get("points")
+        if not (isinstance(pts, list) and 2 <= len(pts) <= 100):
+            raise ValueError("points must be a list of 2..100 [x, y] pairs")
+        num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+        clean = []
+        for p in pts:
+            if not (isinstance(p, (list, tuple)) and len(p) == 2
+                    and num(p[0]) and num(p[1])
+                    and abs(p[0]) < 1e5 and abs(p[1]) < 1e5):
+                raise ValueError("each point must be [x, y] in meters")
+            clean.append([round(float(p[0]), 1), round(float(p[1]), 1)])
+        if all(p == clean[0] for p in clean):
+            raise ValueError("road has zero length")
+        name = op.get("name", "")
+        if not isinstance(name, str) or len(name) > 60:
+            raise ValueError("name must be a string of at most 60 chars")
+        width, drivable = osm_world.ROAD_CLASSES[cls]
+        road = {"id": self._next_road_id, "name": name, "class": cls,
+                "width": width, "drivable": drivable, "points": clean}
+        self._apply_roads(self.world_data["roads"] + [road])
+        self._next_road_id += 1
+
+    def _edit_remove_road(self, op):
+        rid = self._as_int(op.get("id"))
+        roads = [r for r in self.world_data["roads"] if r["id"] != rid]
+        if len(roads) == len(self.world_data["roads"]):
+            raise ValueError(f"unknown road id {op.get('id')!r}")
+        self._apply_roads(roads)
+
+    _EDIT_OPS = {
+        "set_floors": _edit_set_floors,
+        "spawn_car": _edit_spawn_car,
+        "spawn_person": _edit_spawn_person,
+        "remove_car": _edit_remove_car,
+        "remove_person": _edit_remove_person,
+        "add_road": _edit_add_road,
+        "remove_road": _edit_remove_road,
+    }
+
     # ---------- API snapshots ----------
     def world(self):
         """Static layout for the frontend (graphs stay server-side)."""
         w = self.world_data
         return {
             "mode": self.mode,
+            "world_rev": self.world_rev,
             "name": w["name"],
             "radius_m": w["radius_m"],
             "buildings": [{
@@ -328,6 +494,7 @@ class Simulation:
 
     def state(self):
         return {
+            "world_rev": self.world_rev,
             "clock_min": round(self.clock_min, 2),
             "total_load_kw": round(self.total_load_kw),
             "cars": [{
@@ -343,7 +510,9 @@ class Simulation:
         }
 
     def building_detail(self, i):
-        b = self.buildings[i]
+        b = self._find(self.buildings, i)
+        if b is None:
+            return None
         return {
             "id": b.id, "name": b.name, "type": b.type,
             "floors": b.floors, "area_m2": b.area_m2,
@@ -354,7 +523,9 @@ class Simulation:
         }
 
     def car_detail(self, i):
-        c = self.cars[i]
+        c = self._find(self.cars, i)
+        if c is None:
+            return None
         return {
             "id": c.id, "name": c.name, "color": c.color,
             "speed_kmh": round(c.speed * 3.6, 1),
@@ -365,7 +536,9 @@ class Simulation:
         }
 
     def person_detail(self, i):
-        p = self.people[i]
+        p = self._find(self.people, i)
+        if p is None:
+            return None
         bucket_frac = (self.clock_min - self.last_sample_min) / SAMPLE_MIN
         series = p.steps_series_per_hour(bucket_frac)
         return {

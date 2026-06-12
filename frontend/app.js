@@ -69,6 +69,10 @@ function isoToScreen(ix, iy) {
   return { sx: (ix - cam.x) * cam.zoom + W / 2, sy: (iy - cam.y) * cam.zoom + Hh / 2 };
 }
 function worldToScreen(wx, wy) { return isoToScreen(isoX(wx, wy), isoY(wx, wy)); }
+function screenToWorld(sx, sy) {        // inverse of the iso projection, ground plane
+  const { ix, iy } = screenToIso(sx, sy);
+  return { wx: (ix / HW + iy / HH) / 2, wy: (iy / HH - ix / HW) / 2 };
+}
 function clampCam() {
   cam.zoom = clamp(cam.zoom, ZOOM_MIN, ZOOM_MAX);
   cam.x = clamp(cam.x, isoBounds.x0, isoBounds.x1);
@@ -86,17 +90,27 @@ function zoomAt(sx, sy, factor) {
 /* ---------------- pointer input (pan / pinch / click / hover) ---------------- */
 const pointers = new Map();
 let dragStart = null, pinchDist = 0, moved = 0;
+const SNAP_M = 10;                       // road tool snap grid, meters
+const snap = v => Math.round(v / SNAP_M) * SNAP_M;
+let roadDraft = null;                    // {x0,y0,x1,y1} world meters while dragging
 canvas.addEventListener('pointerdown', e => {
-  canvas.setPointerCapture(e.pointerId);
+  try { canvas.setPointerCapture(e.pointerId); } catch {}
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   moved = 0;
   if (pointers.size === 1) {
-    dragStart = { x: e.clientX, y: e.clientY, cx: cam.x, cy: cam.y };
-    canvas.classList.add('dragging');
+    if (tool === 'road') {               // drag draws a road instead of panning
+      const w = screenToWorld(e.clientX, e.clientY);
+      roadDraft = { x0: snap(w.wx), y0: snap(w.wy), x1: snap(w.wx), y1: snap(w.wy) };
+      dragStart = null;
+    } else {
+      dragStart = { x: e.clientX, y: e.clientY, cx: cam.x, cy: cam.y };
+      canvas.classList.add('dragging');
+    }
   } else if (pointers.size === 2) {
     const pts = [...pointers.values()];
     pinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
     dragStart = null;
+    roadDraft = null;
   }
 });
 canvas.addEventListener('pointermove', e => {
@@ -105,7 +119,10 @@ canvas.addEventListener('pointermove', e => {
     moved += Math.abs(e.clientX - p.x) + Math.abs(e.clientY - p.y);
     p.x = e.clientX; p.y = e.clientY;
   }
-  if (pointers.size === 1 && dragStart) {
+  if (pointers.size === 1 && roadDraft) {
+    const w = screenToWorld(e.clientX, e.clientY);
+    roadDraft.x1 = snap(w.wx); roadDraft.y1 = snap(w.wy);
+  } else if (pointers.size === 1 && dragStart) {
     cam.x = dragStart.cx - (e.clientX - dragStart.x) / cam.zoom;
     cam.y = dragStart.cy - (e.clientY - dragStart.y) / cam.zoom;
     clampCam();
@@ -122,6 +139,15 @@ function endPointer(e) {
   pointers.delete(e.pointerId);
   canvas.classList.remove('dragging');
   if (pointers.size < 2) pinchDist = 0;
+  if (roadDraft && pointers.size === 0) {
+    if (e.type === 'pointerup' &&
+        (roadDraft.x0 !== roadDraft.x1 || roadDraft.y0 !== roadDraft.y1)) {
+      sendEdit({ op: 'add_road', class: 'residential',
+                 points: [[roadDraft.x0, roadDraft.y0], [roadDraft.x1, roadDraft.y1]] });
+    }
+    roadDraft = null;
+    return;
+  }
   if (pointers.size === 1) {
     const pts = [...pointers.values()];
     dragStart = { x: pts[0].x, y: pts[0].y, cx: cam.x, cy: cam.y };
@@ -139,14 +165,30 @@ canvas.addEventListener('wheel', e => {
 let prevState = null, curState = null;
 let backendLive = false;
 
-async function fetchWorld() {
-  const r = await fetch('/api/world');
-  world = await r.json();
+function applyWorldStatics() {
   prepareWorld();
-  fitCamera();
   document.querySelector('#hud h1').textContent = world.name;
   document.title = world.name + ' — City Energy Analysis';
   document.getElementById('statBldg').textContent = world.buildings.length;
+}
+async function fetchWorld() {
+  const r = await fetch('/api/world');
+  world = await r.json();
+  applyWorldStatics();
+  fitCamera();
+}
+let worldRefreshing = false;
+async function refreshWorld() {       // after an edit: re-pull statics, keep the camera
+  if (worldRefreshing) return;
+  worldRefreshing = true;
+  try {
+    const r = await fetch('/api/world');
+    world = await r.json();
+    applyWorldStatics();
+  } catch {
+  } finally {
+    worldRefreshing = false;
+  }
 }
 async function pollState() {
   try {
@@ -156,6 +198,7 @@ async function pollState() {
     prevState = curState || s;
     curState = s;
     setBackend(true);
+    if (world && s.world_rev !== world.world_rev) refreshWorld();
   } catch {
     setBackend(false);
   } finally {
@@ -182,12 +225,15 @@ function frameState() {
     total_load_kw: curState.total_load_kw,
     cars: [], people: []
   };
-  for (let i = 0; i < curState.cars.length; i++) {
-    const a = prevState.cars[i] || curState.cars[i], b = curState.cars[i];
+  // match prev by id (spawn/remove edits can reorder the lists)
+  const prevCars = new Map(prevState.cars.map(c => [c.id, c]));
+  for (const b of curState.cars) {
+    const a = prevCars.get(b.id) || b;
     out.cars.push({ ...b, x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) });
   }
-  for (let i = 0; i < curState.people.length; i++) {
-    const a = prevState.people[i] || curState.people[i], b = curState.people[i];
+  const prevPeople = new Map(prevState.people.map(p => [p.id, p]));
+  for (const b of curState.people) {
+    const a = prevPeople.get(b.id) || b;
     out.people.push({ ...b, x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) });
   }
   return out;
@@ -445,6 +491,18 @@ function render(nowMs) {
     }
   }
 
+  // ghost preview while dragging a new road
+  if (roadDraft) {
+    ctx.strokeStyle = 'rgba(95,212,168,0.75)';
+    ctx.lineWidth = 6 * (HW + HH);       // residential width in iso px
+    ctx.setLineDash([16, 10]);
+    ctx.beginPath();
+    ctx.moveTo(isoX(roadDraft.x0, roadDraft.y0), isoY(roadDraft.x0, roadDraft.y0));
+    ctx.lineTo(isoX(roadDraft.x1, roadDraft.y1), isoY(roadDraft.x1, roadDraft.y1));
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   // visible viewport in iso coords (margin for tall buildings)
   const vx0 = cam.x - W / (2 * cam.zoom) - 80, vx1 = cam.x + W / (2 * cam.zoom) + 80;
   const vy0 = cam.y - Hh / (2 * cam.zoom) - 160, vy1 = cam.y + Hh / (2 * cam.zoom) + 80;
@@ -517,6 +575,22 @@ function hitTest(sx, sy) {
 }
 const tooltip = document.getElementById('tooltip');
 function handleHover(sx, sy) {
+  if (tool === 'road') {                 // placing: no entity tooltips
+    canvas.classList.remove('pointing');
+    tooltip.style.display = 'none';
+    return;
+  }
+  if (tool === 'dozer') {                // show which road would be bulldozed
+    const { wx, wy } = screenToWorld(sx, sy);
+    const r = roadHit(wx, wy);
+    if (r) {
+      tooltip.style.display = 'block';
+      tooltip.style.left = (sx + 14) + 'px';
+      tooltip.style.top = (sy + 10) + 'px';
+      tooltip.textContent = '🧨 ' + (r.name || r.class);
+    } else tooltip.style.display = 'none';
+    return;
+  }
   const hit = hitTest(sx, sy);
   if (hit) {
     canvas.classList.add('pointing');
@@ -529,11 +603,53 @@ function handleHover(sx, sy) {
     tooltip.style.display = 'none';
   }
 }
+function segDist(px, py, a, b) {        // point to segment distance, world meters
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  const t = len2 ? clamp(((px - a[0]) * dx + (py - a[1]) * dy) / len2, 0, 1) : 0;
+  return Math.hypot(px - (a[0] + dx * t), py - (a[1] + dy * t));
+}
+function roadHit(wx, wy) {
+  if (!world) return null;
+  let best = null, bestD = 1e9;
+  for (const r of world.roads) {
+    for (let i = 0; i + 1 < r.points.length; i++) {
+      const d = segDist(wx, wy, r.points[i], r.points[i + 1]);
+      if (d < bestD) { bestD = d; best = r; }
+    }
+  }
+  return best && bestD <= Math.max(best.width / 2, 2.5) + 1.5 ? best : null;
+}
+
 function handleClick(sx, sy) {
+  if (tool === 'car' || tool === 'person') {   // armed spawn tool: place, don't select
+    const { wx, wy } = screenToWorld(sx, sy);
+    sendEdit({ op: tool === 'car' ? 'spawn_car' : 'spawn_person',
+               x: Math.round(wx * 10) / 10, y: Math.round(wy * 10) / 10 });
+    return;
+  }
+  if (tool === 'dozer') {                      // bulldoze the road under the click
+    const { wx, wy } = screenToWorld(sx, sy);
+    const r = roadHit(wx, wy);
+    if (r) sendEdit({ op: 'remove_road', id: r.id });
+    return;
+  }
+  if (tool === 'road') return;                 // roads are laid by dragging
   const hit = hitTest(sx, sy);
   if (hit) openDetail(hit.kind, hit.e.id);
   else closePopup();
 }
+
+/* ---------------- spawn toolbar ---------------- */
+let tool = null;                         // null | 'car' | 'person'
+function setTool(t) {
+  tool = (tool === t) ? null : t;
+  for (const b of document.querySelectorAll('#toolbar button'))
+    b.classList.toggle('active', b.dataset.tool === tool);
+  canvas.classList.toggle('placing', !!tool);
+}
+document.querySelectorAll('#toolbar button').forEach(b =>
+  b.addEventListener('click', () => setTool(b.dataset.tool)));
 
 /* ---------------- detail popup (backend results) ---------------- */
 const popup = document.getElementById('popup');
@@ -552,7 +668,47 @@ function closePopup() {
   clearInterval(refreshTimer);
 }
 document.getElementById('popupClose').addEventListener('click', closePopup);
-window.addEventListener('keydown', e => { if (e.key === 'Escape') closePopup(); });
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closePopup(); roadDraft = null; if (tool) setTool(tool); }
+});
+
+/* ---- edit commands (phase 1: building floors) ---- */
+const MAX_FLOORS = 20;
+let curFloors = null;
+function flashToast(msg) {
+  const t = document.getElementById('toast');
+  t.querySelector('span:last-child').textContent = msg;
+  t.classList.remove('hide');
+  clearTimeout(flashToast._timer);
+  flashToast._timer = setTimeout(() => t.classList.add('hide'), 3500);
+}
+async function sendEdit(op) {
+  try {
+    const r = await fetch('/api/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(op)
+    });
+    if (r.ok) refreshDetail();          // world geometry follows via world_rev poll
+    else {
+      const e = await r.json().catch(() => null);
+      flashToast('✋ ' + (e && e.detail ? e.detail : 'edit rejected'));
+    }
+  } catch {}
+}
+function nudgeFloors(delta) {
+  if (openKind !== 'building' || curFloors === null) return;
+  const floors = curFloors + delta;
+  if (floors < 1 || floors > MAX_FLOORS) return;
+  sendEdit({ op: 'set_floors', id: openId, floors });
+}
+document.getElementById('floorMinus').addEventListener('click', () => nudgeFloors(-1));
+document.getElementById('floorPlus').addEventListener('click', () => nudgeFloors(1));
+document.getElementById('entityRemove').addEventListener('click', () => {
+  if (openKind !== 'car' && openKind !== 'person') return;
+  sendEdit({ op: 'remove_' + openKind, id: openId });
+  closePopup();
+});
 
 const TYPE_LABEL = { res: 'Residential', office: 'Office', shop: 'Shop' };
 async function refreshDetail() {
@@ -567,7 +723,13 @@ async function refreshDetail() {
   const sub = document.getElementById('popupSub');
   const nowEl = document.getElementById('popupNow');
   title.textContent = d.name;
+  popup.classList.toggle('editable', openKind === 'building');
+  popup.classList.toggle('removable', openKind === 'car' || openKind === 'person');
   if (openKind === 'building') {
+    curFloors = d.floors;
+    document.getElementById('floorVal').textContent = d.floors;
+    document.getElementById('floorMinus').disabled = d.floors <= 1;
+    document.getElementById('floorPlus').disabled = d.floors >= MAX_FLOORS;
     sub.textContent = `${TYPE_LABEL[d.type]} · ${d.floors} floor${d.floors > 1 ? 's' : ''} · ${d.area_m2} m² — electricity, last 24 h`;
     renderChart(d.history_kw, {
       yStep: 50, color: '#ffc94d', fill: 'rgba(255,201,77,0.16)',
@@ -648,7 +810,7 @@ function secTicks(windowSec, n) {
 }
 
 /* ---------------- boot ---------------- */
-window.cityDebug = { worldToScreen, cam, get world() { return world; }, get state() { return curState; } };
+window.cityDebug = { worldToScreen, cam, openDetail, get world() { return world; }, get state() { return curState; } };
 setTimeout(() => document.getElementById('toast').classList.add('hide'), 9000);
 resize();
 fetchWorld().then(() => { fitCamera(); pollState(); requestAnimationFrame(render); });

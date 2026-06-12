@@ -183,6 +183,7 @@ def build_world(spec, seed=0):
                 continue
             width, drivable = ROAD_CLASSES[cls]
             roads.append({
+                "id": len(roads),
                 "name": tags.get("name", ""),
                 "class": cls, "width": width, "drivable": drivable,
                 "points": [[round(x, 1), round(y, 1)] for x, y in pts],
