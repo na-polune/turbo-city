@@ -1,6 +1,9 @@
 # downloaded input data (OSM cache) — regenerated on first run, keeps the code general
 backend/data/
 
+# Input data
+input/
+
 # python
 __pycache__/
 *.py[cod]
