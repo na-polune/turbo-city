@@ -1,0 +1,1820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Dr Jiawei Lai, scientific simulation engineer working across computational modelling, simulation workflows, and research communication.">
+<title>Dr Jiawei Lai | Scientific Simulation Engineer</title>
+<link rel="icon" href="images/cow-face-apple.png" type="image/png">
+<style>
+  :root{
+    --glass: rgba(16, 22, 40, 0.78);
+    --glass-border: rgba(255,255,255,0.14);
+    --text: #eef2fa;
+    --text-dim: #aab4cc;
+    --accent: #ffc94d;
+    --accent2: #5fd4a8;
+  }
+  *{ box-sizing: border-box; }
+  html, body{ margin:0; padding:0; height:100%; overflow:hidden;
+    font-family: "Segoe UI", "Noto Sans", system-ui, -apple-system, sans-serif;
+    background:#0b1026; color:var(--text); }
+  #city{ position:fixed; inset:0; width:100%; height:100%; display:block;
+    touch-action:none; cursor:grab; }
+  #city.dragging{ cursor:grabbing; }
+  #city.pointing{ cursor:pointer; }
+
+  .panel{
+    position:fixed; background:var(--glass); border:1px solid var(--glass-border);
+    border-radius:14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.35); padding:12px 14px; z-index:10;
+  }
+
+  /* HUD */
+  #hud{ top:14px; left:14px; min-width:188px; }
+  #hud h1{ margin:0 0 2px; font-size:17px; letter-spacing:0.4px; display:flex; align-items:center; gap:8px; }
+  #hud h1 img{ width:22px; height:22px; }
+  #hud .clock{ font-size:22px; font-variant-numeric:tabular-nums; font-weight:700; margin:2px 0 6px; }
+  #hud .clock .glyph{ font-size:16px; margin-left:6px; }
+  #hud .stat{ display:flex; justify-content:space-between; gap:18px; font-size:13px;
+    color:var(--text-dim); padding:1px 0; }
+  #hud .stat b{ color:var(--text); font-variant-numeric:tabular-nums; }
+  #findLai{ margin-top:9px; width:100%; border:1px solid rgba(255,201,77,0.55);
+    background:rgba(255,201,77,0.14); color:var(--accent); font-weight:700; font-size:13px;
+    border-radius:9px; padding:7px 10px; cursor:pointer; }
+  #findLai:hover{ background:rgba(255,201,77,0.28); }
+
+  /* Control panel */
+  #controls{ bottom:14px; left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:center; max-width:96vw; }
+  .ctl-group{ display:flex; align-items:center; gap:6px; }
+  .ctl-label{ font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:var(--text-dim); }
+  button.ctl{ border:1px solid var(--glass-border); background:rgba(255,255,255,0.07);
+    color:var(--text); border-radius:8px; min-width:36px; height:32px; padding:0 10px;
+    font-size:14px; cursor:pointer; }
+  button.ctl:hover{ background:rgba(255,255,255,0.16); }
+  button.ctl.active{ background:var(--accent); color:#19203a; border-color:var(--accent); font-weight:700; }
+  .slider-group{ display:flex; flex-direction:column; gap:1px; min-width:140px; }
+  .slider-group .row{ display:flex; justify-content:space-between; font-size:11px; color:var(--text-dim); }
+  .slider-group .row b{ color:var(--text); }
+  input[type=range]{ width:100%; accent-color:var(--accent); height:20px; cursor:pointer; }
+
+  /* Popups */
+  .popup{ top:80px; right:16px; width:340px; max-width:calc(100vw - 24px); z-index:20; display:none; }
+  .popup.open{ display:block; }
+  .popup .close{ position:absolute; top:8px; right:10px; border:none; background:none;
+    color:var(--text-dim); font-size:20px; cursor:pointer; line-height:1; padding:4px; }
+  .popup .close:hover{ color:var(--text); }
+  .popup h2{ margin:0 36px 2px 0; font-size:17px; }
+  .popup .sub{ margin:0 0 10px; font-size:12.5px; color:var(--text-dim); }
+  #energyChart{ width:100%; height:180px; display:block; border-radius:8px; background:rgba(8,12,28,0.6); }
+  #energyNow{ margin:8px 0 0; font-size:14px; }
+  #energyNow b{ color:var(--accent); font-size:18px; font-variant-numeric:tabular-nums; }
+
+  #profilePopup{ text-align:center; }
+  #profilePopup img.portrait{ width:104px; height:104px; border-radius:50%; object-fit:cover;
+    border:3px solid var(--accent); margin:6px auto 10px; display:block;
+    box-shadow:0 0 24px rgba(255,201,77,0.35); }
+  #profilePopup h2{ margin:0; font-size:20px; }
+  #profilePopup .role{ color:var(--accent2); font-weight:600; font-size:13.5px; margin:3px 0 8px; }
+  #profilePopup .tagline{ font-style:italic; color:var(--accent); font-size:13px; margin:0 0 10px; }
+  #profilePopup p.bio{ font-size:13.5px; line-height:1.55; color:var(--text-dim); margin:0 0 8px; text-align:left; }
+
+  /* tooltip */
+  #tooltip{ position:fixed; pointer-events:none; z-index:30; display:none;
+    background:rgba(10,14,30,0.92); border:1px solid var(--glass-border); color:var(--text);
+    font-size:12px; padding:4px 9px; border-radius:7px; white-space:nowrap; }
+
+  /* toast hint */
+  #toast{ top:14px; left:50%; transform:translateX(-50%); font-size:13px; color:var(--text);
+    display:flex; gap:10px; align-items:center; transition:opacity 0.8s; max-width:92vw; }
+  #toast.hide{ opacity:0; pointer-events:none; }
+  #toast .dot{ width:10px; height:10px; border-radius:50%; background:var(--accent);
+    box-shadow:0 0 10px var(--accent); flex:none; }
+
+  /* footer */
+  #footer{ position:fixed; bottom:12px; right:14px; z-index:10; font-size:12px;
+    color:var(--text-dim); background:var(--glass); border:1px solid var(--glass-border);
+    border-radius:10px; padding:6px 12px; backdrop-filter:blur(8px); }
+  #footer a{ color:var(--accent2); text-decoration:none; margin-left:8px; }
+  #footer a:hover{ text-decoration:underline; }
+
+  noscript .panel{ position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); max-width:420px; }
+
+  @media (max-width: 760px){
+    #hud{ min-width:150px; padding:10px 12px; }
+    #hud .clock{ font-size:18px; }
+    #controls{ bottom:10px; gap:8px; padding:10px; }
+    .slider-group{ min-width:116px; }
+    #footer{ bottom:auto; top:14px; right:14px; padding:5px 9px; }
+    #footer .copy{ display:none; }
+    #footer a{ margin-left:6px; }
+    .popup{ top:auto; bottom:96px; right:12px; left:12px; width:auto; }
+    #toast{ top:205px; bottom:auto; left:12px; right:12px; transform:none; font-size:12px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="city" aria-label="Interactive isometric city simulation — click the highlighted citizen to meet Dr Jiawei Lai"></canvas>
+
+<div id="hud" class="panel">
+  <h1><img src="images/cow-face-apple.png" alt="">Polune City</h1>
+  <div class="clock"><span id="clockText">09:00</span><span class="glyph" id="clockGlyph">☀️</span></div>
+  <div class="stat"><span>Population</span><b id="statPop">0</b></div>
+  <div class="stat"><span>Vehicles</span><b id="statCars">0</b></div>
+  <div class="stat"><span>Buildings</span><b id="statBldg">0</b></div>
+  <button id="findLai">★ Find Dr Lai</button>
+</div>
+
+<div id="controls" class="panel" role="group" aria-label="Simulation controls">
+  <div class="ctl-group">
+    <button class="ctl" id="btnPause" title="Pause / resume" aria-label="Pause or resume">⏸</button>
+  </div>
+  <div class="ctl-group" id="speedBtns">
+    <span class="ctl-label">Speed</span>
+    <button class="ctl active" data-speed="1">1×</button>
+    <button class="ctl" data-speed="2">2×</button>
+    <button class="ctl" data-speed="4">4×</button>
+  </div>
+  <div class="ctl-group">
+    <span class="ctl-label">Zoom</span>
+    <button class="ctl" id="btnZoomOut" aria-label="Zoom out">−</button>
+    <button class="ctl" id="btnZoomIn" aria-label="Zoom in">+</button>
+  </div>
+  <div class="slider-group">
+    <div class="row"><span class="ctl-label">Buildings</span><b id="bldgVal">0</b></div>
+    <input type="range" id="bldgSlider" min="10" max="80" step="1" aria-label="Number of buildings">
+  </div>
+  <div class="slider-group">
+    <div class="row"><span class="ctl-label">Population</span><b id="popVal">120</b></div>
+    <input type="range" id="popSlider" min="20" max="300" step="5" value="120" aria-label="Population">
+  </div>
+</div>
+
+<div id="energyPopup" class="popup panel" role="dialog" aria-labelledby="energyTitle">
+  <button class="close" data-close aria-label="Close">✕</button>
+  <h2 id="energyTitle">Building</h2>
+  <p class="sub" id="energySub">Electricity demand — last 24 hours</p>
+  <canvas id="energyChart" width="640" height="360"></canvas>
+  <p id="energyNow"></p>
+</div>
+
+<div id="profilePopup" class="popup panel" role="dialog" aria-labelledby="profileTitle">
+  <button class="close" data-close aria-label="Close">✕</button>
+  <img class="portrait" src="images/dp.jpg" alt="Portrait of Dr Jiawei Lai" loading="lazy">
+  <h2 id="profileTitle">Dr Jiawei Lai</h2>
+  <p class="role">Scientific Simulation Engineer</p>
+  <p class="tagline">“Calm tools for complicated questions.”</p>
+  <p class="bio">I build simulation workflows that turn complex physical systems into clear, testable engineering insight.</p>
+  <p class="bio">I work at the intersection of engineering analysis, numerical simulation, and practical research software — making models easier to understand, compare, and communicate, especially when the underlying science is intricate.</p>
+</div>
+
+<div id="toast" class="panel"><span class="dot"></span><span>Welcome to Polune City — click the glowing citizen to meet <b>Dr Lai</b>, or click any building to see its energy use.</span></div>
+
+<div id="tooltip"></div>
+
+<footer id="footer"><span class="copy">© Dr Jiawei Lai</span>
+  <a href="https://www.linkedin.com/in/jiawei-lai-482ab056/">LinkedIn</a>
+  <a href="https://scholar.google.com/citations?hl=en&amp;user=CENF37gAAAAJ">Scholar</a>
+  <a href="images/Wechat.jpg">WeChat</a>
+</footer>
+
+<noscript>
+  <div class="panel">
+    <h2>Dr Jiawei Lai — Scientific Simulation Engineer</h2>
+    <p>I build simulation workflows that turn complex physical systems into clear, testable engineering insight.
+       I work at the intersection of engineering analysis, numerical simulation, and practical research software.</p>
+    <p><em>Calm tools for complicated questions.</em></p>
+    <p><a href="https://www.linkedin.com/in/jiawei-lai-482ab056/">LinkedIn</a> ·
+       <a href="https://scholar.google.com/citations?hl=en&amp;user=CENF37gAAAAJ">Google Scholar</a> ·
+       <a href="images/Wechat.jpg">WeChat QR</a></p>
+    <p>This page is an interactive city simulation and needs JavaScript.</p>
+  </div>
+</noscript>
+
+<script>
+'use strict';
+/* ================================================================
+   1. CONFIG
+   ================================================================ */
+const TILE_W = 64, TILE_H = 32, HW = 32, HH = 16;
+const GRID = 40;
+const ROADS = [2, 10, 18, 26, 34];
+const SEED = 20260611;
+const FLOOR_H = 10;
+const GROUND_SCALE = 1.5;
+const ZOOM_MIN = 0.4, ZOOM_MAX = 2.5;
+const LIGHT_DUR = [9, 2.5, 9, 2.5];          // NS_G, NS_Y, EW_G, EW_Y (sim seconds)
+const LIGHT_CYCLE = LIGHT_DUR.reduce((a, b) => a + b);
+const CITIZEN_SPEED = 1.0;                    // tiles / sim second
+const CAR_SPEED = 2.8;
+const SAMPLE_MIN = 10;                        // energy sample every N game minutes
+const HISTORY_LEN = 144;                      // 24h * 6 samples/h
+const CAR_SPD_LEN = 240;                      // speed telemetry ring buffer
+const CAR_SPD_DT = 0.5;                       // sample every 0.5 sim sec (= 0.5 game min)
+const KMH_PER_TILE = 18;                      // 1 tile ≈ 5 m → tiles/s * 18 = km/h
+const STEPS_PER_TILE = 90;                    // pedometer scale (game-time pacing)
+
+const T = { GRASS: 0, ROAD: 1, WALK: 2, LOT: 3, PARK: 4, WATER: 5 };
+
+/* ================================================================
+   2. UTILS
+   ================================================================ */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rng = mulberry32(SEED);
+const jitter = mulberry32(SEED ^ 0x9e3779b9);   // non-layout randomness (agents, noise)
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+const pick = (r, arr) => arr[Math.floor(r() * arr.length)];
+function hexToRgb(h) {
+  return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+}
+function mixHex(a, b, t) {
+  const A = hexToRgb(a), B = hexToRgb(b);
+  return `rgb(${Math.round(lerp(A[0], B[0], t))},${Math.round(lerp(A[1], B[1], t))},${Math.round(lerp(A[2], B[2], t))})`;
+}
+function shade(hex, f) {  // f<1 darker, f>1 lighter
+  const c = hexToRgb(hex).map(v => clamp(Math.round(v * f), 0, 255));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+// piecewise-linear curve over 24h, points = [[hour, value], ...] sorted, wraps
+function pw(points, h) {
+  h = ((h % 24) + 24) % 24;
+  for (let i = 0; i < points.length - 1; i++) {
+    if (h >= points[i][0] && h <= points[i + 1][0]) {
+      const t = (h - points[i][0]) / (points[i + 1][0] - points[i][0]);
+      return lerp(points[i][1], points[i + 1][1], t);
+    }
+  }
+  return points[points.length - 1][1];
+}
+
+/* ================================================================
+   3. ISO MATH
+   ================================================================ */
+const isoX = (wx, wy) => (wx - wy) * HW;
+const isoY = (wx, wy) => (wx + wy) * HH;
+function isoToWorld(ix, iy) {
+  return { wx: (ix / HW + iy / HH) / 2, wy: (iy / HH - ix / HW) / 2 };
+}
+
+/* ================================================================
+   4. DATA
+   ================================================================ */
+const FIRST = ['Wei','Mei','Jun','Hua','Xin','Yan','Ming','Ling','Chen','Bao','Amara','Ben','Clara','Dmitri','Elena','Felix','Grace','Hugo','Iris','James','Kira','Leo','Maya','Noah','Olive','Pavel','Quinn','Rosa','Sam','Tara','Umar','Vera','Walt','Yuki','Zane','Anya','Cody','Dana','Mira','Theo'];
+const LAST = ['Chen','Wang','Zhang','Liu','Lin','Huang','Zhou','Smith','Jones','Brown','Garcia','Miller','Davis','Khan','Patel','Kim','Park','Sato','Tanaka','Novak','Silva','Rossi','Weber','Olsen','Dubois','Moreau','Costa','Haddad','Petrov','Reyes'];
+const CAR_TYPES = ['Sedan','Hatchback','Coupe','Van','Pickup','Mini','Wagon','Taxi'];
+const CAR_COLORS = ['#d4453a','#3a6fd4','#e8e8ea','#23252b','#f2c14e','#5fa052','#9b59b6','#c0c5ce','#e67e22','#16a085'];
+const BLD_PRE = ['Maple','Cedar','Willow','Aspen','Lotus','Harbor','Summit','Granite','Juniper','Magnolia','Quartz','Meridian','Crescent','Orchid','Bamboo','Amber','Cobalt','Sterling','Pearl','Linden'];
+const BLD_SUF = {
+  res: ['Apartments','Residences','Court','Heights','Terrace'],
+  office: ['Tower','Works','Labs','Centre','Exchange'],
+  shop: ['Mart','Market','Café','Books','Bakery','Noodle Bar','Studio']
+};
+const PALETTES = {
+  res:    [['#c9a486','#8a6e54'], ['#b8909a','#7d5b64'], ['#a8b59a','#6f7a62'], ['#d3b78f','#94805f']],
+  office: [['#8fa6bd','#5c7390'], ['#9aa9b8','#66788c'], ['#7e93ad','#52647e'], ['#a3b6c9','#6e8298']],
+  shop:   [['#e0a35c','#a8743a'], ['#d98b7a','#a05c4e'], ['#86bda0','#578a6e'], ['#c9a0c4','#8f6a8b']]
+};
+const OCC = {
+  res:    h => pw([[0,0.25],[5,0.3],[7,0.55],[9,0.35],[12,0.3],[16,0.45],[19,0.9],[22,0.7],[24,0.25]], h),
+  office: h => pw([[0,0.06],[6,0.08],[8,0.7],[12,0.85],[14,0.8],[17,0.7],[19,0.25],[22,0.08],[24,0.06]], h),
+  shop:   h => pw([[0,0.04],[8,0.1],[10,0.65],[13,0.8],[17,0.85],[20,0.5],[21.5,0.08],[24,0.04]], h)
+};
+// day/night palette keyframes: [hour, skyTop, skyBottom, ambientAlpha]
+const SKY_KEYS = [
+  [0,    '#0b1026', '#1a2342', 0.55],
+  [4.5,  '#101736', '#23294e', 0.52],
+  [6,    '#28365e', '#b06a74', 0.34],
+  [7.5,  '#7fb2e5', '#ffd9a0', 0.06],
+  [9,    '#8ec8f2', '#cfe9ff', 0],
+  [16.5, '#84b9e8', '#ffe7b0', 0],
+  [18.5, '#5a6db0', '#ff9e6d', 0.22],
+  [20,   '#1b2547', '#5a4a7a', 0.45],
+  [22,   '#0b1026', '#1a2342', 0.55],
+  [24,   '#0b1026', '#1a2342', 0.55]
+];
+
+/* ================================================================
+   5. CITY GENERATION
+   ================================================================ */
+const grid = new Uint8Array(GRID * GRID);
+const crossV = new Set();   // tile keys where pedestrians cross a vertical road
+const crossH = new Set();
+const tk = (x, y) => y * GRID + x;
+const inGrid = (x, y) => x >= 0 && y >= 0 && x < GRID && y < GRID;
+const gridAt = (x, y) => inGrid(x, y) ? grid[tk(x, y)] : T.GRASS;
+
+const intersections = [];   // {x, y, phaseOffset}
+const interByKey = new Map();
+const blocks = [];
+const cityLots = [];        // all candidate buildings (seeded shuffle order)
+let activeCount = 0;        // buildings slider value
+const lotIndexByTile = new Map();   // tileKey -> index into cityLots (active only)
+const decoTrees = [];       // {wx, wy, variant} permanent trees (parks + outskirts)
+const lotTrees = [];        // per-lot trees shown when the lot is inactive
+const lamps = [];           // {wx, wy}
+let cowPark = null;         // {cx, cy, cows:[{wx,wy,flip}]}
+let pondBlock = null;
+
+function generateCity() {
+  // --- roads ---
+  for (const r of ROADS) {
+    for (let i = ROADS[0]; i <= ROADS[ROADS.length - 1]; i++) {
+      grid[tk(r, i)] = T.ROAD;
+      grid[tk(i, r)] = T.ROAD;
+    }
+  }
+  for (const rx of ROADS) for (const ry of ROADS) {
+    const it = { x: rx, y: ry, phaseOffset: rng() * LIGHT_CYCLE };
+    intersections.push(it);
+    interByKey.set(tk(rx, ry), it);
+  }
+
+  // --- blocks & sidewalks ---
+  const kinds = [];
+  for (let i = 0; i < 16; i++) kinds.push(null);
+  const order = [...Array(16).keys()];
+  for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+  kinds[order[0]] = 'cowPark';
+  kinds[order[1]] = 'pond';
+  kinds[order[2]] = 'park';
+  kinds[order[3]] = 'park';
+  kinds[5] = kinds[5] || 'office';      // a central block hosts the landmark
+  const fill = ['res','res','res','res','res','office','office','shop','shop','shop','res','office'];
+  let fi = 0;
+  for (let i = 0; i < 16; i++) if (!kinds[i]) kinds[i] = fill[(fi++) % fill.length];
+
+  let landmarkPlaced = false;
+  for (let bj = 0; bj < 4; bj++) for (let bi = 0; bi < 4; bi++) {
+    const x0 = ROADS[bi] + 1, x1 = ROADS[bi + 1] - 1;   // 7-tile span
+    const y0 = ROADS[bj] + 1, y1 = ROADS[bj + 1] - 1;
+    const kind = kinds[bj * 4 + bi];
+    blocks.push({ x0, y0, x1, y1, kind });
+    // sidewalk ring
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+      if (x === x0 || x === x1 || y === y0 || y === y1) grid[tk(x, y)] = T.WALK;
+    }
+    const cx0 = x0 + 1, cy0 = y0 + 1;   // 5x5 interior origin
+
+    if (kind === 'park' || kind === 'pond' || kind === 'cowPark') {
+      for (let x = cx0; x < cx0 + 5; x++) for (let y = cy0; y < cy0 + 5; y++) grid[tk(x, y)] = T.PARK;
+      if (kind === 'pond') {
+        pondBlock = { cx0, cy0 };
+        for (let x = cx0 + 1; x < cx0 + 4; x++) for (let y = cy0 + 1; y < cy0 + 4; y++) grid[tk(x, y)] = T.WATER;
+        for (const [dx, dy] of [[0,0],[4,0],[0,4],[4,4]]) decoTrees.push({ wx: cx0 + dx + 0.5, wy: cy0 + dy + 0.5, variant: Math.floor(rng() * 5) });
+      } else if (kind === 'cowPark') {
+        cowPark = { cx: cx0 + 2.5, cy: cy0 + 2.5, cows: [] };
+        for (let i = 0; i < 3; i++) {
+          cowPark.cows.push({ wx: cx0 + 0.8 + rng() * 3.4, wy: cy0 + 0.8 + rng() * 3.4, flip: rng() < 0.5 });
+        }
+        for (const [dx, dy] of [[0,0],[4,0],[0,4],[4,4]]) decoTrees.push({ wx: cx0 + dx + 0.5, wy: cy0 + dy + 0.5, variant: Math.floor(rng() * 5) });
+      } else {
+        for (let x = cx0; x < cx0 + 5; x++) for (let y = cy0; y < cy0 + 5; y++) {
+          if (rng() < 0.32) decoTrees.push({ wx: x + 0.3 + rng() * 0.4, wy: y + 0.3 + rng() * 0.4, variant: Math.floor(rng() * 5) });
+        }
+      }
+      continue;
+    }
+
+    // --- building block: subdivide 5x5 interior into lots ---
+    const used = new Set();
+    const addLot = (lx, ly, size, type) => {
+      const floors = type === 'office' ? 4 + Math.floor(rng() * 5)
+                   : type === 'shop'   ? 1 + Math.floor(rng() * 2)
+                   : 2 + Math.floor(rng() * 3);
+      const tiles = [];
+      for (let dx = 0; dx < size; dx++) for (let dy = 0; dy < size; dy++) {
+        used.add(tk(lx + dx, ly + dy));
+        tiles.push(tk(lx + dx, ly + dy));
+      }
+      cityLots.push({
+        x: lx, y: ly, size, type, floors,
+        palette: pick(rng, PALETTES[type]),
+        name: pick(rng, BLD_PRE) + ' ' + pick(rng, BLD_SUF[type]),
+        winSeed: Math.floor(rng() * 1e9),
+        tiles,
+        history: new Float32Array(HISTORY_LEN), histIdx: 0,
+        base: 0, peak: 0, noise: 0,
+        spriteDay: null, spriteNight: null, sx: 0, sy: 0, sw: 0, sh: 0, depth: 0
+      });
+    };
+    // landmark: 2x2, 12 floors, centred
+    if (kind === 'office' && !landmarkPlaced) {
+      landmarkPlaced = true;
+      addLot(cx0 + 1, cy0 + 1, 2, 'office');
+      const lm = cityLots[cityLots.length - 1];
+      lm.floors = 12; lm.landmark = true; lm.name = 'The Lai Simulation Tower';
+      lm.palette = ['#9fb8d8', '#647ea3'];
+    }
+    // 2x2 lots at corners
+    for (const [ox, oy] of [[0, 0], [3, 0], [0, 3], [3, 3]]) {
+      const lx = cx0 + ox, ly = cy0 + oy;
+      let free = true;
+      for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 2; dy++) if (used.has(tk(lx + dx, ly + dy))) free = false;
+      if (free && rng() < 0.45) addLot(lx, ly, 2, kind);
+    }
+    // 1x1 fill
+    for (let x = cx0; x < cx0 + 5; x++) for (let y = cy0; y < cy0 + 5; y++) {
+      if (used.has(tk(x, y))) continue;
+      if (rng() < 0.72) {
+        const type = rng() < 0.7 ? kind : pick(rng, ['res', 'shop', 'office']);
+        addLot(x, y, 1, type);
+      } else {
+        grid[tk(x, y)] = T.GRASS;
+        if (rng() < 0.5) lotTrees.push({ wx: x + 0.5, wy: y + 0.5, variant: Math.floor(rng() * 5), always: true });
+      }
+    }
+  }
+
+  // mark all lot tiles (active subset applied later)
+  for (const b of cityLots) for (const t of b.tiles) grid[t] = T.LOT;
+
+  // each inactive lot gets a couple of fallback trees (deterministic)
+  for (const b of cityLots) {
+    b.fallbackTrees = [];
+    const n = b.size === 2 ? 3 : 1;
+    for (let i = 0; i < n; i++) {
+      b.fallbackTrees.push({ wx: b.x + 0.3 + rng() * (b.size - 0.6) + 0.3, wy: b.y + 0.3 + rng() * (b.size - 0.6) + 0.3, variant: Math.floor(rng() * 5) });
+    }
+  }
+
+  // --- crosswalks (rows/cols adjacent to intersections, where sidewalk exists on both sides) ---
+  for (const r of ROADS) {            // vertical road x = r
+    for (const q of ROADS) {
+      for (const y of [q - 1, q + 1]) {
+        if (gridAt(r - 1, y) === T.WALK && gridAt(r + 1, y) === T.WALK && gridAt(r, y) === T.ROAD) crossV.add(tk(r, y));
+      }
+    }
+  }
+  for (const q of ROADS) {            // horizontal road y = q
+    for (const r of ROADS) {
+      for (const x of [r - 1, r + 1]) {
+        if (gridAt(x, q - 1) === T.WALK && gridAt(x, q + 1) === T.WALK && gridAt(x, q) === T.ROAD) crossH.add(tk(x, q));
+      }
+    }
+  }
+
+  // --- outskirt trees ---
+  for (let i = 0; i < 120; i++) {
+    const x = rng() * GRID, y = rng() * GRID;
+    if (gridAt(Math.floor(x), Math.floor(y)) === T.GRASS &&
+        (x < ROADS[0] - 0.3 || x > ROADS[4] + 1.3 || y < ROADS[0] - 0.3 || y > ROADS[4] + 1.3)) {
+      decoTrees.push({ wx: x, wy: y, variant: Math.floor(rng() * 5) });
+    }
+  }
+
+  // --- street lamps: along sidewalk rings facing the road ---
+  for (const b of blocks) {
+    for (let x = b.x0; x <= b.x1; x += 3) {
+      lamps.push({ wx: x + 0.5, wy: b.y0 + 0.18 });
+      lamps.push({ wx: x + 0.5, wy: b.y1 + 0.82 });
+    }
+    for (let y = b.y0 + 1; y <= b.y1 - 1; y += 3) {
+      lamps.push({ wx: b.x0 + 0.18, wy: y + 0.5 });
+      lamps.push({ wx: b.x1 + 0.82, wy: y + 0.5 });
+    }
+  }
+
+  // shuffle lots once (seeded) so the slider reveals a stable mixed order
+  for (let i = cityLots.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [cityLots[i], cityLots[j]] = [cityLots[j], cityLots[i]];
+  }
+  cityLots.forEach((b, i) => { b.id = i; });
+}
+
+/* ================================================================
+   6. SIDEWALK GRAPH (citizens)
+   ================================================================ */
+const walkAdj = new Map();   // tileKey -> [{key, cross: interOrNull, axis: 'V'|'H'|null}]
+function buildSidewalkGraph() {
+  for (let x = 0; x < GRID; x++) for (let y = 0; y < GRID; y++) {
+    if (grid[tk(x, y)] !== T.WALK) continue;
+    const adj = [];
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (gridAt(nx, ny) === T.WALK) adj.push({ key: tk(nx, ny), cross: null, axis: null });
+    }
+    // crosswalk edges: jump 2 tiles across a road
+    for (const [dx, dy, axis] of [[1, 0, 'V'], [-1, 0, 'V'], [0, 1, 'H'], [0, -1, 'H']]) {
+      const rxx = x + dx, ryy = y + dy;             // road tile
+      const ox = x + dx * 2, oy = y + dy * 2;       // opposite sidewalk
+      const rkey = tk(rxx, ryy);
+      if (gridAt(ox, oy) !== T.WALK) continue;
+      if (axis === 'V' && crossV.has(rkey)) {
+        const inter = nearestInter(rxx, ryy);
+        adj.push({ key: tk(ox, oy), cross: inter, axis: 'V' });
+      } else if (axis === 'H' && crossH.has(rkey)) {
+        const inter = nearestInter(rxx, ryy);
+        adj.push({ key: tk(ox, oy), cross: inter, axis: 'H' });
+      }
+    }
+    walkAdj.set(tk(x, y), adj);
+  }
+}
+function nearestInter(x, y) {
+  let best = null, bd = 1e9;
+  for (const it of intersections) {
+    const d = Math.abs(it.x - x) + Math.abs(it.y - y);
+    if (d < bd) { bd = d; best = it; }
+  }
+  return best;
+}
+
+/* ================================================================
+   7. TRAFFIC LIGHTS
+   ================================================================ */
+let simClock = 0;            // sim seconds since load
+function lightPhase(inter) { // returns {phase 0..3, t: time into phase}
+  let u = (simClock + inter.phaseOffset) % LIGHT_CYCLE;
+  for (let p = 0; p < 4; p++) {
+    if (u < LIGHT_DUR[p]) return { phase: p, t: u };
+    u -= LIGHT_DUR[p];
+  }
+  return { phase: 0, t: 0 };
+}
+// can cars on a vertical road (NS axis) go through this intersection?
+function carGo(inter, axisV) {
+  const { phase } = lightPhase(inter);
+  return axisV ? phase === 0 : phase === 2;
+}
+// pedestrian wants to cross a road of given axis ('V' = vertical road, conflicts NS cars)
+function pedCanCross(inter, axis) {
+  const { phase, t } = lightPhase(inter);
+  if (axis === 'V') return phase === 2 && t < LIGHT_DUR[2] - 2.2;
+  return phase === 0 && t < LIGHT_DUR[0] - 2.2;
+}
+
+/* ================================================================
+   8. ENERGY MODEL
+   ================================================================ */
+function initEnergy(b) {
+  const area = b.size * b.size;
+  b.base = 2 + b.floors * 1.4 * area;
+  const coef = b.type === 'office' ? 9 : b.type === 'shop' ? 13 : 5;
+  b.peak = b.floors * coef * area * (b.landmark ? 1.6 : 1);
+}
+function energyLoad(b, hour) {
+  b.noise += (jitter() - 0.5) * 0.05;
+  b.noise = clamp(b.noise, -0.12, 0.12);
+  const hvac = 0.08 * Math.max(0, Math.sin((hour - 6) / 24 * Math.PI * 2)); // mild midday bump
+  return Math.max(0.5, (b.base + b.peak * (OCC[b.type](hour) + hvac)) * (1 + b.noise));
+}
+function prefillHistory(b, nowMin) {
+  for (let i = 0; i < HISTORY_LEN; i++) {
+    const m = nowMin - (HISTORY_LEN - 1 - i) * SAMPLE_MIN;
+    b.history[i] = energyLoad(b, ((m % 1440) + 1440) % 1440 / 60);
+  }
+  b.histIdx = 0; // ring start: history[histIdx] is the OLDEST sample
+}
+let lastSampleMin = 0;
+function sampleEnergy(nowMin) {
+  while (nowMin - lastSampleMin >= SAMPLE_MIN) {
+    lastSampleMin += SAMPLE_MIN;
+    const hour = (lastSampleMin % 1440) / 60;
+    for (let i = 0; i < activeCount; i++) {
+      const b = cityLots[i];
+      b.history[b.histIdx] = energyLoad(b, hour);
+      b.histIdx = (b.histIdx + 1) % HISTORY_LEN;
+    }
+    for (const c of citizens) {            // rotate pedometer buckets
+      c.stepIdx = (c.stepIdx + 1) % HISTORY_LEN;
+      c.steps[c.stepIdx] = 0;
+    }
+    if (openBuilding) drawEnergyChart(openBuilding);
+  }
+}
+
+/* ================================================================
+   9. SPRITES
+   ================================================================ */
+function makeCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(w); c.height = Math.ceil(h);
+  return c;
+}
+const SPRITE_SS = 2;   // supersample building/tree sprites for crisp zoom-in
+function makeBuildingSprite(b, night) {
+  const s = b.size, m = 0.1;
+  const H = b.floors * FLOOR_H + 6;
+  const w = s * TILE_W + 4, h = s * TILE_H + H + 4;
+  const cv = makeCanvas(w * SPRITE_SS, h * SPRITE_SS);
+  const g = cv.getContext('2d');
+  g.scale(SPRITE_SS, SPRITE_SS);
+  g.translate(w / 2, H + 2);          // origin = world anchor (b.x, b.y) iso point
+  const P = (dx, dy, up) => [ (dx - dy) * HW, (dx + dy) * HH - (up || 0) ];
+  const A = P(m, m), B = P(s - m, m), C = P(s - m, s - m), D = P(m, s - m);
+  const At = P(m, m, H), Bt = P(s - m, m, H), Ct = P(s - m, s - m, H), Dt = P(m, s - m, H);
+  const [wallBase] = [b.palette[0]];
+  const wallL = night ? shade(wallBase, 0.42) : wallBase;                 // D-C face (lower-left)
+  const wallR = night ? shade(b.palette[1], 0.4) : b.palette[1];          // C-B face (lower-right)
+  const roofC = night ? shade(b.palette[1], 0.5) : shade(b.palette[1], 1.18);
+  const quad = (p1, p2, p3, p4, fill) => {
+    g.beginPath(); g.moveTo(p1[0], p1[1]); g.lineTo(p2[0], p2[1]);
+    g.lineTo(p3[0], p3[1]); g.lineTo(p4[0], p4[1]); g.closePath();
+    g.fillStyle = fill; g.fill();
+  };
+  quad(Dt, Ct, C, D, wallL);
+  quad(Ct, Bt, B, C, wallR);
+  quad(At, Bt, Ct, Dt, roofC);
+  // roof edge + small AC unit on 2x2
+  g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(At[0], At[1]); g.lineTo(Bt[0], Bt[1]); g.lineTo(Ct[0], Ct[1]); g.lineTo(Dt[0], Dt[1]); g.closePath(); g.stroke();
+  if (s === 2) {
+    const rc = [(At[0] + Ct[0]) / 2, (At[1] + Ct[1]) / 2];
+    quad([rc[0] - 8, rc[1] - 9], [rc[0] + 8, rc[1] - 9], [rc[0] + 8, rc[1] - 1], [rc[0] - 8, rc[1] - 1], night ? '#2c3242' : '#7c8694');
+  }
+  // windows
+  const wr = mulberry32(b.winSeed);
+  const winDay = ['rgba(40,60,90,0.85)', 'rgba(120,160,200,0.8)'];
+  const drawWindows = (pBase1, pBase2) => {  // wall from base corner pBase1 -> pBase2
+    const ex = pBase2[0] - pBase1[0], ey = pBase2[1] - pBase1[1];
+    const cols = s === 2 ? 5 : 3;
+    for (let f = 0; f < b.floors; f++) {
+      const wy = -(f * FLOOR_H) - FLOOR_H * 0.62 - 3;
+      for (let cI = 0; cI < cols; cI++) {
+        const t0 = (cI + 0.25) / cols, t1 = (cI + 0.75) / cols;
+        const lit = wr() < 0.6;
+        let fillS;
+        if (night) fillS = lit ? (wr() < 0.85 ? '#ffd98a' : '#ffeec4') : 'rgba(18,22,34,0.9)';
+        else fillS = winDay[Math.floor(wr() * 2)];
+        const x0 = pBase1[0] + ex * t0, y0 = pBase1[1] + ey * t0;
+        const x1 = pBase1[0] + ex * t1, y1 = pBase1[1] + ey * t1;
+        quad([x0, y0 + wy], [x1, y1 + wy], [x1, y1 + wy + FLOOR_H * 0.5], [x0, y0 + wy + FLOOR_H * 0.5], fillS);
+      }
+    }
+  };
+  drawWindows(D, C);
+  drawWindows(C, B);
+  // shop front: awning + warm band at street level
+  if (b.type === 'shop') {
+    const aw = night ? shade('#d4604a', 0.6) : '#d4604a';
+    const band = (p1, p2) => {
+      const ex = p2[0] - p1[0], ey = p2[1] - p1[1];
+      quad([p1[0] + ex * 0.1, p1[1] + ey * 0.1 - 9], [p1[0] + ex * 0.9, p1[1] + ey * 0.9 - 9],
+           [p1[0] + ex * 0.9, p1[1] + ey * 0.9 - 5], [p1[0] + ex * 0.1, p1[1] + ey * 0.1 - 5], aw);
+    };
+    band(D, C); band(C, B);
+  }
+  // landmark spire
+  if (b.landmark) {
+    const top = [(At[0] + Ct[0]) / 2, (At[1] + Ct[1]) / 2];
+    g.strokeStyle = night ? '#ffd98a' : '#5c7390'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(top[0], top[1]); g.lineTo(top[0], top[1] - 18); g.stroke();
+    g.fillStyle = night ? '#ff6a6a' : '#d4453a';
+    g.beginPath(); g.arc(top[0], top[1] - 18, 2.5, 0, 7); g.fill();
+  }
+  return cv;
+}
+
+const treeSprites = [];
+function makeTreeSprites() {
+  const canopies = ['#3f7d44', '#4f8f4a', '#5f9c52', '#7aa05a', '#46855c'];
+  for (let v = 0; v < 5; v++) {
+    const w = 36, h = 46;
+    const cv = makeCanvas(w * SPRITE_SS, h * SPRITE_SS);
+    const g = cv.getContext('2d');
+    g.scale(SPRITE_SS, SPRITE_SS);
+    g.fillStyle = 'rgba(0,0,0,0.18)';
+    g.beginPath(); g.ellipse(w / 2, h - 3, 9, 4, 0, 0, 7); g.fill();
+    g.fillStyle = '#6b4a2f';
+    g.fillRect(w / 2 - 1.5, h - 16, 3, 13);
+    const c = canopies[v];
+    g.fillStyle = c;
+    g.beginPath(); g.arc(w / 2, h - 24, 10, 0, 7); g.fill();
+    g.fillStyle = shade(c, 1.18);
+    g.beginPath(); g.arc(w / 2 - 4, h - 28, 7, 0, 7); g.fill();
+    g.fillStyle = shade(c, 0.85);
+    g.beginPath(); g.arc(w / 2 + 5, h - 22, 6.5, 0, 7); g.fill();
+    treeSprites.push(cv);
+  }
+}
+
+/* ================================================================
+   10. GROUND MEGACANVAS
+   ================================================================ */
+let groundCv = null, groundOX = 0, groundOY = 0;
+function renderGround() {
+  const wpx = 2 * GRID * HW + 8, hpx = GRID * 2 * HH + 8;
+  if (!groundCv) groundCv = makeCanvas(wpx * GROUND_SCALE, hpx * GROUND_SCALE);
+  groundOX = GRID * HW + 4; groundOY = 4;
+  const g = groundCv.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, groundCv.width, groundCv.height);
+  g.setTransform(GROUND_SCALE, 0, 0, GROUND_SCALE, GROUND_SCALE * groundOX, GROUND_SCALE * groundOY);
+
+  const diamond = (x, y, inset) => {
+    const i = inset || 0;
+    g.beginPath();
+    g.moveTo(isoX(x + i, y + i), isoY(x + i, y + i));
+    g.lineTo(isoX(x + 1 - i, y + i), isoY(x + 1 - i, y + i));
+    g.lineTo(isoX(x + 1 - i, y + 1 - i), isoY(x + 1 - i, y + 1 - i));
+    g.lineTo(isoX(x + i, y + 1 - i), isoY(x + i, y + 1 - i));
+    g.closePath();
+  };
+  const grassNoise = mulberry32(777);
+
+  for (let y = 0; y < GRID; y++) for (let x = 0; x < GRID; x++) {
+    const t = grid[tk(x, y)];
+    const key = tk(x, y);
+    const isActiveLot = t === T.LOT && lotIndexByTile.has(key);
+    if (t === T.GRASS || t === T.PARK || (t === T.LOT && !isActiveLot)) {
+      const base = t === T.PARK ? '#79b563' : '#84bb68';
+      diamond(x, y);
+      g.fillStyle = (x + y) % 2 ? base : shade(base, 0.95);
+      g.fill();
+      if (grassNoise() < 0.4) {
+        g.fillStyle = 'rgba(255,255,255,0.06)';
+        g.fillRect(isoX(x + 0.5, y + 0.5) - 2 + grassNoise() * 8 - 4, isoY(x + 0.5, y + 0.5) + grassNoise() * 6 - 3, 2, 1);
+      }
+    } else if (t === T.WALK) {
+      diamond(x, y);
+      g.fillStyle = (x + y) % 2 ? '#c2c3bd' : '#b8b9b3';
+      g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.10)'; g.lineWidth = 0.7; g.stroke();
+    } else if (t === T.LOT) {
+      diamond(x, y);
+      g.fillStyle = '#a8a9a3';
+      g.fill();
+    } else if (t === T.WATER) {
+      diamond(x, y);
+      g.fillStyle = '#4f8fd0';
+      g.fill();
+      g.strokeStyle = 'rgba(255,255,255,0.30)'; g.lineWidth = 1;
+      g.beginPath();
+      g.arc(isoX(x + 0.5, y + 0.5), isoY(x + 0.5, y + 0.5), 5, 0.4, 2.2);
+      g.stroke();
+    } else if (t === T.ROAD) {
+      diamond(x, y);
+      g.fillStyle = '#4a4c52';
+      g.fill();
+      const isInter = interByKey.has(key);
+      const onV = ROADS.includes(x), onH = ROADS.includes(y);
+      if (crossV.has(key)) {
+        // zebra for pedestrians walking E-W across the vertical road: stripes along x
+        g.fillStyle = 'rgba(235,235,235,0.85)';
+        for (let i = 0; i < 5; i++) {
+          const fx = x + 0.12 + i * 0.18;
+          g.beginPath();
+          g.moveTo(isoX(fx, y + 0.15), isoY(fx, y + 0.15));
+          g.lineTo(isoX(fx + 0.09, y + 0.15), isoY(fx + 0.09, y + 0.15));
+          g.lineTo(isoX(fx + 0.09, y + 0.85), isoY(fx + 0.09, y + 0.85));
+          g.lineTo(isoX(fx, y + 0.85), isoY(fx, y + 0.85));
+          g.closePath(); g.fill();
+        }
+      } else if (crossH.has(key)) {
+        g.fillStyle = 'rgba(235,235,235,0.85)';
+        for (let i = 0; i < 5; i++) {
+          const fy = y + 0.12 + i * 0.18;
+          g.beginPath();
+          g.moveTo(isoX(x + 0.15, fy), isoY(x + 0.15, fy));
+          g.lineTo(isoX(x + 0.85, fy), isoY(x + 0.85, fy));
+          g.lineTo(isoX(x + 0.85, fy + 0.09), isoY(x + 0.85, fy + 0.09));
+          g.lineTo(isoX(x + 0.15, fy + 0.09), isoY(x + 0.15, fy + 0.09));
+          g.closePath(); g.fill();
+        }
+      } else if (!isInter) {
+        // dashed centreline
+        g.strokeStyle = 'rgba(240,220,130,0.7)'; g.lineWidth = 1.4;
+        g.setLineDash([6, 6]);
+        g.beginPath();
+        if (onV) { g.moveTo(isoX(x + 0.5, y), isoY(x + 0.5, y)); g.lineTo(isoX(x + 0.5, y + 1), isoY(x + 0.5, y + 1)); }
+        else     { g.moveTo(isoX(x, y + 0.5), isoY(x, y + 0.5)); g.lineTo(isoX(x + 1, y + 0.5), isoY(x + 1, y + 0.5)); }
+        g.stroke();
+        g.setLineDash([]);
+      }
+      // kerb edges
+      g.strokeStyle = 'rgba(0,0,0,0.22)'; g.lineWidth = 0.8;
+      diamond(x, y); g.stroke();
+    }
+  }
+  // park paths: simple cross through plain parks
+  g.strokeStyle = 'rgba(222,205,160,0.9)'; g.lineWidth = 4; g.lineCap = 'round';
+  for (const b of blocks) {
+    if (b.kind !== 'park' && b.kind !== 'cowPark') continue;
+    const cx = b.x0 + 3.5, cy = b.y0 + 3.5;
+    g.beginPath();
+    g.moveTo(isoX(b.x0 + 1, cy), isoY(b.x0 + 1, cy));
+    g.lineTo(isoX(b.x1, cy), isoY(b.x1, cy));
+    g.moveTo(isoX(cx, b.y0 + 1), isoY(cx, b.y0 + 1));
+    g.lineTo(isoX(cx, b.y1), isoY(cx, b.y1));
+    g.stroke();
+  }
+}
+
+/* ================================================================
+   11. STATIC PROPS (built / rebuilt when the buildings slider moves)
+   ================================================================ */
+let staticProps = [];
+function setBuildingCount(n) {
+  activeCount = clamp(n, 1, cityLots.length);
+  lotIndexByTile.clear();
+  for (let i = 0; i < activeCount; i++) {
+    const b = cityLots[i];
+    for (const t of b.tiles) lotIndexByTile.set(t, i);
+  }
+  staticProps = [];
+  for (let i = 0; i < cityLots.length; i++) {
+    const b = cityLots[i];
+    if (i < activeCount) {
+      if (!b.spriteDay) {
+        b.spriteDay = makeBuildingSprite(b, false);
+        b.spriteNight = makeBuildingSprite(b, true);
+        const H = b.floors * FLOOR_H + 6;
+        b.sw = b.size * TILE_W + 4; b.sh = b.size * TILE_H + H + 4;
+        b.sx = isoX(b.x, b.y) - b.sw / 2;
+        b.sy = isoY(b.x, b.y) - H - 2;
+        b.depth = b.x + b.size + b.y + b.size - 1;
+      }
+      staticProps.push({ kind: 'bldg', b, depth: b.depth, sx: b.sx, sy: b.sy, sw: b.sw, sh: b.sh });
+    } else {
+      for (const tr of b.fallbackTrees) pushTreeProp(tr);
+    }
+  }
+  for (const tr of decoTrees) pushTreeProp(tr);
+  for (const tr of lotTrees) pushTreeProp(tr);
+  for (const l of lamps) {
+    staticProps.push({ kind: 'lamp', wx: l.wx, wy: l.wy, depth: l.wx + l.wy,
+      sx: isoX(l.wx, l.wy) - 6, sy: isoY(l.wx, l.wy) - 34, sw: 12, sh: 36 });
+  }
+  for (const it of intersections) {
+    const wx = it.x + 1.18, wy = it.y + 1.18;
+    staticProps.push({ kind: 'tlight', it, wx, wy, depth: wx + wy,
+      sx: isoX(wx, wy) - 8, sy: isoY(wx, wy) - 38, sw: 16, sh: 40 });
+  }
+  if (cowPark) {
+    staticProps.push({ kind: 'statue', wx: cowPark.cx, wy: cowPark.cy, depth: cowPark.cx + cowPark.cy,
+      sx: isoX(cowPark.cx, cowPark.cy) - 26, sy: isoY(cowPark.cx, cowPark.cy) - 70, sw: 52, sh: 76 });
+    for (const c of cowPark.cows) {
+      staticProps.push({ kind: 'cow', wx: c.wx, wy: c.wy, flip: c.flip, depth: c.wx + c.wy,
+        sx: isoX(c.wx, c.wy) - 11, sy: isoY(c.wx, c.wy) - 14, sw: 22, sh: 17 });
+    }
+  }
+  staticProps.sort((a, b2) => a.depth - b2.depth);
+  renderGround();
+  document.getElementById('statBldg').textContent = activeCount;
+  document.getElementById('bldgVal').textContent = activeCount;
+}
+function pushTreeProp(tr) {
+  staticProps.push({ kind: 'tree', wx: tr.wx, wy: tr.wy, variant: tr.variant, depth: tr.wx + tr.wy,
+    sx: isoX(tr.wx, tr.wy) - 18, sy: isoY(tr.wx, tr.wy) - 43, sw: 36, sh: 46 });
+}
+
+/* ================================================================
+   12. AGENTS
+   ================================================================ */
+const citizens = [];
+const cars = [];
+let owner = null;
+const walkNodes = [];   // tileKeys of all sidewalk tiles
+function nodePos(key) { return { wx: (key % GRID) + 0.5, wy: Math.floor(key / GRID) + 0.5 }; }
+
+function spawnCitizen(isOwner) {
+  const startKey = walkNodes[Math.floor(jitter() * walkNodes.length)];
+  const c = {
+    name: isOwner ? 'Dr Jiawei Lai' : pick(jitter, FIRST) + ' ' + pick(jitter, LAST),
+    from: startKey, to: startKey, prev: -1, t: 1,
+    wx: 0, wy: 0,
+    speed: CITIZEN_SPEED * (0.8 + jitter() * 0.4),
+    shirt: isOwner ? '#f4f4f4' : pick(jitter, ['#d4453a','#3a6fd4','#f2c14e','#5fa052','#9b59b6','#e67e22','#5fd4a8','#d36a9b']),
+    skin: pick(jitter, ['#f0c8a0','#e0b48c','#c89870','#a87850','#8a5c3c']),
+    hair: pick(jitter, ['#2a2a2e','#4a3220','#6e4a2a','#888','#1a1a1a']),
+    phase: jitter() * 7,
+    waiting: false, crossing: null,
+    isOwner: !!isOwner,
+    steps: new Float32Array(HISTORY_LEN), stepIdx: 0,
+    waitToday: (clockMin % 1440) * 0.03 * (0.5 + jitter())
+  };
+  // prefill a plausible walking history (distance in tiles per 10-min bucket)
+  let act = 0.75;
+  for (let i = 0; i < HISTORY_LEN; i++) {
+    act = clamp(act + (jitter() - 0.5) * 0.2, 0.45, 1);
+    c.steps[i] = c.speed * 10 * act;
+  }
+  c.steps[c.stepIdx] = 0;   // current bucket starts empty
+  const p = nodePos(startKey);
+  c.wx = p.wx; c.wy = p.wy;
+  pickNextWalk(c);
+  citizens.push(c);
+  return c;
+}
+function pickNextWalk(c) {
+  const adj = walkAdj.get(c.to);
+  if (!adj || !adj.length) { c.t = 0; return; }
+  const cameFrom = c.from;          // avoid walking straight back
+  let options = adj.filter(a => a.key !== cameFrom);
+  if (!options.length) options = adj;
+  const choice = options[Math.floor(jitter() * options.length)];
+  c.from = c.to;
+  c.to = choice.key;
+  c.t = 0;
+  if (choice.cross) {
+    c.crossing = choice;
+    c.waiting = !pedCanCross(choice.cross, choice.axis);
+  } else {
+    c.crossing = null;
+    c.waiting = false;
+  }
+}
+function updateCitizens(dt) {
+  for (const c of citizens) {
+    if (c.waiting) {
+      if (pedCanCross(c.crossing.cross, c.crossing.axis)) c.waiting = false;
+      else { c.waitToday += dt; continue; }
+    }
+    const a = nodePos(c.from), b = nodePos(c.to);
+    const len = Math.abs(b.wx - a.wx) + Math.abs(b.wy - a.wy) || 1;
+    c.t += (c.speed * dt) / len;
+    c.phase += dt * 9;
+    c.steps[c.stepIdx] += c.speed * dt;   // pedometer (tiles walked this bucket)
+    if (c.t >= 1) { c.wx = b.wx; c.wy = b.wy; pickNextWalk(c); }
+    else { c.wx = lerp(a.wx, b.wx, c.t); c.wy = lerp(a.wy, b.wy, c.t); }
+  }
+}
+function setPopulation(n) {
+  while (citizens.length < n) spawnCitizen(false);
+  while (citizens.length > n) {
+    const last = citizens[citizens.length - 1];
+    if (last.isOwner) citizens.splice(citizens.length - 2, 1);
+    else citizens.pop();
+  }
+  const carTarget = clamp(Math.round(n * 0.3), 8, 80);
+  while (cars.length < carTarget) spawnCar();
+  while (cars.length > carTarget) cars.pop();
+  if ((openCar && !cars.includes(openCar)) || (openCitizen && !citizens.includes(openCitizen))) closePopups();
+}
+
+// --- cars ---
+const DIRV = [[0, -1], [1, 0], [0, 1], [-1, 0]];   // N E S W in world coords
+function laneOffset(dir) {  // right-hand lateral offset, right = (-dy, dx)
+  const [dx, dy] = DIRV[dir];
+  return { ox: -dy * 0.22, oy: dx * 0.22 };
+}
+function spawnCar() {
+  for (let tries = 0; tries < 30; tries++) {
+    const vertical = jitter() < 0.5;
+    const line = pick(jitter, ROADS);
+    const dir = vertical ? (jitter() < 0.5 ? 0 : 2) : (jitter() < 0.5 ? 1 : 3);
+    const s = ROADS[0] + 0.8 + jitter() * (ROADS[4] - ROADS[0] - 1.6);
+    let ok = true;
+    for (const o of cars) {
+      if (o.vertical === vertical && o.line === line && Math.abs(o.s - s) < 1.0) { ok = false; break; }
+    }
+    if (!ok) continue;
+    cars.push({
+      name: pick(jitter, FIRST) + "'s " + pick(jitter, CAR_TYPES),
+      color: pick(jitter, CAR_COLORS),
+      vertical, line, s, dir,
+      lat: 0.22 * (jitter() < 0.5 ? 1 : -1),
+      speed: 0, maxSpeed: CAR_SPEED * (0.8 + jitter() * 0.4),
+      spd: new Float32Array(CAR_SPD_LEN), spdIdx: 0, spdCount: 0
+    });
+    const c = cars[cars.length - 1];
+    const lo = laneOffset(c.dir);
+    c.lat = c.vertical ? lo.ox : lo.oy;
+    return;
+  }
+}
+function carPos(c) {
+  return c.vertical
+    ? { wx: c.line + 0.5 + c.lat, wy: c.s }
+    : { wx: c.s, wy: c.line + 0.5 + c.lat };
+}
+function updateCars(dt) {
+  // bucket per (vertical, line, dirSign) for following
+  const lanes = new Map();
+  for (const c of cars) {
+    const key = (c.vertical ? 'v' : 'h') + c.line + '_' + c.dir;
+    if (!lanes.has(key)) lanes.set(key, []);
+    lanes.get(key).push(c);
+  }
+  for (const arr of lanes.values()) arr.sort((a, b) => a.s - b.s);
+
+  for (const c of cars) {
+    const [dx, dy] = DIRV[c.dir];
+    const sign = c.vertical ? dy : dx;
+    let target = c.maxSpeed;
+
+    // next intersection ahead on this line
+    let nextQ = null, bestD = 1e9;
+    for (const q of ROADS) {
+      const center = q + 0.5;
+      const d = (center - c.s) * sign;
+      if (d > -0.49 && d < bestD) { bestD = d; nextQ = q; }
+    }
+    if (nextQ !== null) {
+      const interKey = c.vertical ? tk(c.line, nextQ) : tk(nextQ, c.line);
+      const inter = interByKey.get(interKey);
+      const dStop = bestD - 1.8;     // stop before the crosswalk row
+      if (inter && !carGo(inter, c.vertical)) {
+        if (dStop > 0.02 && dStop < 1.8) target = Math.min(target, c.maxSpeed * dStop / 1.8);
+        if (dStop <= 0.02 && dStop > -0.25) target = 0;
+      }
+      // crossed the centre → choose continuation (once per intersection)
+      if (bestD <= 0 && inter && c.lastInter !== interKey) {
+        c.lastInter = interKey;
+        chooseTurn(c, inter);
+      }
+    }
+    // follow the car ahead (lane bucket may not exist yet right after a turn)
+    const key = (c.vertical ? 'v' : 'h') + c.line + '_' + c.dir;
+    const arr = lanes.get(key) || [];
+    let aheadGap = 1e9;
+    for (const o of arr) {
+      if (o === c) continue;
+      const g = (o.s - c.s) * sign;
+      if (g > 0.01 && g < aheadGap) aheadGap = g;
+    }
+    if (aheadGap < 0.55) target = 0;
+    else if (aheadGap < 1.0) target = Math.min(target, c.maxSpeed * (aheadGap - 0.5) / 0.5);
+
+    c.speed += clamp(target - c.speed, -8 * dt, 4 * dt);
+    if (c.speed < 0.01 && target === 0) c.speed = 0;
+    c.s += c.speed * dt * sign;
+
+    // ease lateral offset toward the lane for current dir
+    const lo = laneOffset(c.dir);
+    const latT = c.vertical ? lo.ox : lo.oy;
+    c.lat += (latT - c.lat) * Math.min(1, 5 * dt);
+  }
+}
+function chooseTurn(c, inter) {
+  const opts = [];
+  if (inter.y > ROADS[0]) opts.push(0);
+  if (inter.x < ROADS[4]) opts.push(1);
+  if (inter.y < ROADS[4]) opts.push(2);
+  if (inter.x > ROADS[0]) opts.push(3);
+  const reverse = (c.dir + 2) % 4;
+  let valid = opts.filter(d => d !== reverse);
+  if (!valid.length) valid = [reverse];
+  // weight straight 3x
+  const weighted = [];
+  for (const d of valid) { weighted.push(d); if (d === c.dir) { weighted.push(d, d); } }
+  const nd = weighted[Math.floor(jitter() * weighted.length)];
+  if (nd === c.dir) return;
+  // re-frame onto the new line
+  const newVertical = (nd === 0 || nd === 2);
+  c.dir = nd;
+  if (newVertical !== c.vertical) {
+    c.line = newVertical ? inter.x : inter.y;
+    c.s = (newVertical ? inter.y : inter.x) + 0.5;
+    c.vertical = newVertical;
+  }
+}
+
+/* ================================================================
+   13. DAY / NIGHT
+   ================================================================ */
+let clockMin = 9 * 60;       // game minutes since midnight
+function skyAt(hour) {
+  let i = 0;
+  while (i < SKY_KEYS.length - 2 && hour > SKY_KEYS[i + 1][0]) i++;
+  const a = SKY_KEYS[i], b = SKY_KEYS[i + 1];
+  const t = clamp((hour - a[0]) / (b[0] - a[0] || 1), 0, 1);
+  return { top: mixHex(a[1], b[1], t), bot: mixHex(a[2], b[2], t), amb: lerp(a[3], b[3], t) };
+}
+
+/* ================================================================
+   14. CANVAS / CAMERA / INPUT
+   ================================================================ */
+const canvas = document.getElementById('city');
+const ctx = canvas.getContext('2d');
+let lightCv = null, lightCtx = null;
+let W = 0, Hh = 0, DPR = 1;
+const cam = { x: 0, y: GRID * HH, zoom: 1 };
+let camAnim = null;
+
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; Hh = window.innerHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(Hh * DPR);
+  if (!lightCv) { lightCv = document.createElement('canvas'); lightCtx = lightCv.getContext('2d'); }
+  lightCv.width = canvas.width; lightCv.height = canvas.height;
+}
+window.addEventListener('resize', resize);
+
+function screenToIso(sx, sy) {
+  return { ix: (sx - W / 2) / cam.zoom + cam.x, iy: (sy - Hh / 2) / cam.zoom + cam.y };
+}
+function isoToScreen(ix, iy) {
+  return { sx: (ix - cam.x) * cam.zoom + W / 2, sy: (iy - cam.y) * cam.zoom + Hh / 2 };
+}
+function clampCam() {
+  cam.zoom = clamp(cam.zoom, ZOOM_MIN, ZOOM_MAX);
+  cam.x = clamp(cam.x, -GRID * HW, GRID * HW);
+  cam.y = clamp(cam.y, -40, GRID * HH * 2 + 40);
+}
+function zoomAt(sx, sy, factor) {
+  const before = screenToIso(sx, sy);
+  cam.zoom = clamp(cam.zoom * factor, ZOOM_MIN, ZOOM_MAX);
+  const after = screenToIso(sx, sy);
+  cam.x += before.ix - after.ix;
+  cam.y += before.iy - after.iy;
+  clampCam();
+}
+
+// pointer state
+const pointers = new Map();
+let dragStart = null, pinchDist = 0, moved = 0;
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  moved = 0;
+  camAnim = null;
+  if (pointers.size === 1) {
+    dragStart = { x: e.clientX, y: e.clientY, cx: cam.x, cy: cam.y };
+    canvas.classList.add('dragging');
+  } else if (pointers.size === 2) {
+    const pts = [...pointers.values()];
+    pinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    dragStart = null;
+  }
+});
+canvas.addEventListener('pointermove', e => {
+  const p = pointers.get(e.pointerId);
+  if (p) {
+    moved += Math.abs(e.clientX - p.x) + Math.abs(e.clientY - p.y);
+    p.x = e.clientX; p.y = e.clientY;
+  }
+  if (pointers.size === 1 && dragStart) {
+    cam.x = dragStart.cx - (e.clientX - dragStart.x) / cam.zoom;
+    cam.y = dragStart.cy - (e.clientY - dragStart.y) / cam.zoom;
+    clampCam();
+  } else if (pointers.size === 2) {
+    const pts = [...pointers.values()];
+    const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+    if (pinchDist > 0) zoomAt(mid.x, mid.y, d / pinchDist);
+    pinchDist = d;
+  } else if (!pointers.size) {
+    handleHover(e.clientX, e.clientY);
+  }
+});
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  canvas.classList.remove('dragging');
+  if (pointers.size < 2) pinchDist = 0;
+  if (pointers.size === 1) {
+    const pts = [...pointers.values()];
+    dragStart = { x: pts[0].x, y: pts[0].y, cx: cam.x, cy: cam.y };
+  } else dragStart = null;
+  if (e.type === 'pointerup' && moved < 6) handleClick(e.clientX, e.clientY);
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0012));
+}, { passive: false });
+
+/* ---------- hit testing ---------- */
+function agentAt(sx, sy) {
+  const pt = screenToIso(sx, sy);
+  let best = null, bestD = 1e9;
+  for (const c of citizens) {
+    const ix = isoX(c.wx, c.wy), iy = isoY(c.wx, c.wy);
+    const r = c.isOwner ? 26 : 12;
+    const d = Math.hypot(pt.ix - ix, pt.iy - (iy - 12));
+    if (d < r / Math.min(1, cam.zoom) && d < bestD) { bestD = d; best = { kind: 'citizen', c }; }
+  }
+  for (const c of cars) {
+    const p = carPos(c);
+    const ix = isoX(p.wx, p.wy), iy = isoY(p.wx, p.wy);
+    const d = Math.hypot(pt.ix - ix, pt.iy - (iy - 5));
+    if (d < 14 / Math.min(1, cam.zoom) && d < bestD) { bestD = d; best = { kind: 'car', c }; }
+  }
+  return best;
+}
+function buildingAt(sx, sy) {
+  const pt = screenToIso(sx, sy);
+  let best = null, bd = -1e9;
+  for (let i = 0; i < activeCount; i++) {
+    const b = cityLots[i];
+    if (pt.ix >= b.sx && pt.ix <= b.sx + b.sw && pt.iy >= b.sy && pt.iy <= b.sy + b.sh) {
+      if (b.depth > bd) { bd = b.depth; best = b; }
+    }
+  }
+  return best;
+}
+const tooltip = document.getElementById('tooltip');
+function handleHover(sx, sy) {
+  const hit = agentAt(sx, sy);
+  const b = hit ? null : buildingAt(sx, sy);
+  if (hit || b) {
+    canvas.classList.add('pointing');
+    tooltip.style.display = 'block';
+    tooltip.style.left = (sx + 14) + 'px';
+    tooltip.style.top = (sy + 10) + 'px';
+    tooltip.textContent = hit
+      ? (hit.kind === 'citizen' ? (hit.c.isOwner ? '★ Dr Jiawei Lai — click me!' : hit.c.name) : hit.c.name)
+      : b.name;
+  } else {
+    canvas.classList.remove('pointing');
+    tooltip.style.display = 'none';
+  }
+}
+function handleClick(sx, sy) {
+  const hit = agentAt(sx, sy);
+  if (hit && hit.kind === 'citizen') {
+    if (hit.c.isOwner) openProfile(); else openCitizenPopup(hit.c);
+    return;
+  }
+  if (hit && hit.kind === 'car') { openCarPopup(hit.c); return; }
+  const b = buildingAt(sx, sy);
+  if (b) { openEnergy(b); return; }
+  closePopups();
+}
+
+/* ================================================================
+   15. RENDER
+   ================================================================ */
+const cowImg = new Image();
+cowImg.src = 'images/cow-face-apple.png';
+
+function drawCitizenSprite(c, now) {
+  const ix = isoX(c.wx, c.wy), iy = isoY(c.wx, c.wy);
+  const sc = c.isOwner ? 1.5 : 1;
+  const walking = !c.waiting;
+  const bob = walking ? Math.sin(c.phase) * 1.2 : 0;
+  if (c.isOwner) {
+    // pulsing glow + arrow marker
+    const pulse = 0.5 + 0.5 * Math.sin(now * 4);
+    ctx.fillStyle = `rgba(255,201,77,${0.25 + 0.2 * pulse})`;
+    ctx.beginPath(); ctx.ellipse(ix, iy, 18 + 4 * pulse, 9 + 2 * pulse, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#ffc94d';
+    const ay = iy - 46 - 3 * Math.sin(now * 3);
+    ctx.beginPath(); ctx.moveTo(ix, ay + 8); ctx.lineTo(ix - 6, ay); ctx.lineTo(ix + 6, ay); ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.ellipse(ix, iy, 6 * sc, 3 * sc, 0, 0, 7); ctx.fill();
+  // legs
+  ctx.strokeStyle = '#2c3038'; ctx.lineWidth = 2 * sc; ctx.lineCap = 'round';
+  const lp = walking ? Math.sin(c.phase) * 2.5 : 0;
+  ctx.beginPath();
+  ctx.moveTo(ix - 1.5 * sc, iy - 8 * sc + bob); ctx.lineTo(ix - 1.5 * sc + lp, iy);
+  ctx.moveTo(ix + 1.5 * sc, iy - 8 * sc + bob); ctx.lineTo(ix + 1.5 * sc - lp, iy);
+  ctx.stroke();
+  // body
+  ctx.fillStyle = c.shirt;
+  ctx.beginPath();
+  ctx.roundRect(ix - 3.5 * sc, iy - 15 * sc + bob, 7 * sc, 9 * sc, 2.5 * sc);
+  ctx.fill();
+  // head
+  ctx.fillStyle = c.skin;
+  ctx.beginPath(); ctx.arc(ix, iy - 18 * sc + bob, 3.6 * sc, 0, 7); ctx.fill();
+  ctx.fillStyle = c.hair;
+  ctx.beginPath(); ctx.arc(ix, iy - 19.2 * sc + bob, 3.1 * sc, Math.PI, 2 * Math.PI); ctx.fill();
+}
+
+function drawCarSprite(c, nightBlend) {
+  const p = carPos(c);
+  const ix = isoX(p.wx, p.wy), iy = isoY(p.wx, p.wy);
+  const [dx, dy] = DIRV[c.dir];
+  // iso unit vectors
+  const Lx = (dx - dy) * HW, Ly = (dx + dy) * HH;           // along travel
+  const Wx = (-dy - dx) * HW, Wy = (-dy + dx) * HH;          // lateral (left)
+  const hl = 0.30, hw = 0.16, bh = 7;
+  const cor = [
+    [ix + Lx * hl + Wx * hw, iy + Ly * hl + Wy * hw],
+    [ix + Lx * hl - Wx * hw, iy + Ly * hl - Wy * hw],
+    [ix - Lx * hl - Wx * hw, iy - Ly * hl - Wy * hw],
+    [ix - Lx * hl + Wx * hw, iy - Ly * hl + Wy * hw]
+  ];
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.ellipse(ix, iy, 14, 6, 0, 0, 7); ctx.fill();
+  const body = nightBlend > 0.5 ? shade(c.color, 0.65) : c.color;
+  // side faces (draw all, far ones overdrawn) then roof
+  const faces = [[0, 1], [1, 2], [2, 3], [3, 0]]
+    .map(([a, b]) => ({ a: cor[a], b: cor[b], my: (cor[a][1] + cor[b][1]) / 2 }))
+    .sort((f, g2) => f.my - g2.my);
+  for (let i = 0; i < faces.length; i++) {
+    const f = faces[i];
+    ctx.fillStyle = shade(body, i < 2 ? 0.7 : 0.88);
+    ctx.beginPath();
+    ctx.moveTo(f.a[0], f.a[1] - bh); ctx.lineTo(f.b[0], f.b[1] - bh);
+    ctx.lineTo(f.b[0], f.b[1]); ctx.lineTo(f.a[0], f.a[1]);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(cor[0][0], cor[0][1] - bh); ctx.lineTo(cor[1][0], cor[1][1] - bh);
+  ctx.lineTo(cor[2][0], cor[2][1] - bh); ctx.lineTo(cor[3][0], cor[3][1] - bh);
+  ctx.closePath(); ctx.fill();
+  // cabin
+  ctx.fillStyle = nightBlend > 0.5 ? '#3c4456' : '#aac4dd';
+  ctx.beginPath();
+  ctx.moveTo(ix + Lx * 0.12 + Wx * 0.11, iy + Ly * 0.12 + Wy * 0.11 - bh - 4);
+  ctx.lineTo(ix + Lx * 0.12 - Wx * 0.11, iy + Ly * 0.12 - Wy * 0.11 - bh - 4);
+  ctx.lineTo(ix - Lx * 0.18 - Wx * 0.11, iy - Ly * 0.18 - Wy * 0.11 - bh - 4);
+  ctx.lineTo(ix - Lx * 0.18 + Wx * 0.11, iy - Ly * 0.18 + Wy * 0.11 - bh - 4);
+  ctx.closePath(); ctx.fill();
+  if (nightBlend > 0.3) {
+    ctx.fillStyle = '#fff3c4';
+    ctx.beginPath(); ctx.arc(cor[0][0], cor[0][1] - 4, 1.6, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(cor[1][0], cor[1][1] - 4, 1.6, 0, 7); ctx.fill();
+    ctx.fillStyle = '#ff6a6a';
+    ctx.beginPath(); ctx.arc(cor[2][0], cor[2][1] - 4, 1.3, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(cor[3][0], cor[3][1] - 4, 1.3, 0, 7); ctx.fill();
+  }
+}
+
+function drawLamp(p, nightBlend) {
+  const ix = isoX(p.wx, p.wy), iy = isoY(p.wx, p.wy);
+  ctx.strokeStyle = '#3c4148'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(ix, iy); ctx.lineTo(ix, iy - 26); ctx.stroke();
+  ctx.fillStyle = nightBlend > 0.25 ? '#ffe9a8' : '#c9ccd2';
+  ctx.beginPath(); ctx.arc(ix, iy - 28, 3, 0, 7); ctx.fill();
+}
+function drawTrafficLight(p) {
+  const ix = isoX(p.wx, p.wy), iy = isoY(p.wx, p.wy);
+  const { phase } = lightPhase(p.it);
+  const nsC = phase === 0 ? '#41d05c' : phase === 1 ? '#ffb13d' : '#e84545';
+  const ewC = phase === 2 ? '#41d05c' : phase === 3 ? '#ffb13d' : '#e84545';
+  ctx.strokeStyle = '#33373d'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(ix, iy); ctx.lineTo(ix, iy - 30); ctx.stroke();
+  ctx.fillStyle = '#23262b';
+  ctx.fillRect(ix - 7, iy - 38, 14, 9);
+  ctx.fillStyle = nsC; ctx.beginPath(); ctx.arc(ix - 3.5, iy - 33.5, 2.6, 0, 7); ctx.fill();
+  ctx.fillStyle = ewC; ctx.beginPath(); ctx.arc(ix + 3.5, iy - 33.5, 2.6, 0, 7); ctx.fill();
+}
+function drawStatue(p, now) {
+  const ix = isoX(p.wx, p.wy), iy = isoY(p.wx, p.wy);
+  // pedestal
+  const ph = 16, pwid = 16;
+  ctx.fillStyle = '#9aa0a8';
+  ctx.beginPath();
+  ctx.moveTo(ix, iy - ph - 8); ctx.lineTo(ix + pwid, iy - ph); ctx.lineTo(ix, iy - ph + 8); ctx.lineTo(ix - pwid, iy - ph);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#7e848c';
+  ctx.beginPath();
+  ctx.moveTo(ix - pwid, iy - ph); ctx.lineTo(ix, iy - ph + 8); ctx.lineTo(ix, iy + 8); ctx.lineTo(ix - pwid, iy);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#8b9199';
+  ctx.beginPath();
+  ctx.moveTo(ix + pwid, iy - ph); ctx.lineTo(ix, iy - ph + 8); ctx.lineTo(ix, iy + 8); ctx.lineTo(ix + pwid, iy);
+  ctx.closePath(); ctx.fill();
+  // bobbing cow billboard
+  const bob = Math.sin(now * 1.5) * 2.5;
+  if (cowImg.complete && cowImg.naturalWidth) {
+    ctx.drawImage(cowImg, ix - 19, iy - ph - 46 + bob, 38, 38);
+  } else {
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(ix, iy - ph - 27 + bob, 14, 0, 7); ctx.fill();
+  }
+}
+function drawCowProp(p) {
+  const ix = isoX(p.wx, p.wy), iy = isoY(p.wx, p.wy);
+  const f = p.flip ? -1 : 1;
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath(); ctx.ellipse(ix, iy, 9, 3.5, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#f4f2ee';
+  ctx.beginPath(); ctx.ellipse(ix, iy - 6, 8, 5, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#2b2b2e';
+  ctx.beginPath(); ctx.ellipse(ix - 3 * f, iy - 7, 2.6, 2, 0, 0, 7); ctx.fill();
+  // head (grazing, lowered)
+  ctx.fillStyle = '#f4f2ee';
+  ctx.beginPath(); ctx.ellipse(ix + 7 * f, iy - 3, 3.4, 2.8, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#e8e4de'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(ix - 5, iy - 2); ctx.lineTo(ix - 5, iy + 1);
+  ctx.moveTo(ix + 4, iy - 2); ctx.lineTo(ix + 4, iy + 1); ctx.stroke();
+}
+
+let fpsAgents = [];
+function render(now) {
+  const hour = (clockMin % 1440) / 60;
+  const sky = skyAt(hour);
+  const nightBlend = clamp(sky.amb / 0.55, 0, 1);
+
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const grad = ctx.createLinearGradient(0, 0, 0, Hh);
+  grad.addColorStop(0, sky.top); grad.addColorStop(1, sky.bot);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, Hh);
+
+  // world transform
+  ctx.setTransform(DPR * cam.zoom, 0, 0, DPR * cam.zoom,
+    DPR * (W / 2 - cam.x * cam.zoom), DPR * (Hh / 2 - cam.y * cam.zoom));
+
+  // earth extrusion below the island
+  ctx.fillStyle = '#3d3328';
+  ctx.beginPath();
+  ctx.moveTo(isoX(0, GRID), isoY(0, GRID));
+  ctx.lineTo(isoX(GRID, GRID), isoY(GRID, GRID));
+  ctx.lineTo(isoX(GRID, GRID), isoY(GRID, GRID) + 16);
+  ctx.lineTo(isoX(0, GRID) - 0, isoY(0, GRID) + 16);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#332b22';
+  ctx.beginPath();
+  ctx.moveTo(isoX(0, GRID), isoY(0, GRID));
+  ctx.lineTo(isoX(0, 0) - 0, isoY(0, 0));
+  ctx.lineTo(isoX(0, 0), isoY(0, 0) + 16);
+  ctx.lineTo(isoX(0, GRID), isoY(0, GRID) + 16);
+  ctx.closePath(); ctx.fill();
+
+  // ground
+  ctx.drawImage(groundCv, -groundOX, -groundOY, groundCv.width / GROUND_SCALE, groundCv.height / GROUND_SCALE);
+
+  // visible viewport in iso coords
+  const vx0 = cam.x - W / (2 * cam.zoom) - 80, vx1 = cam.x + W / (2 * cam.zoom) + 80;
+  const vy0 = cam.y - Hh / (2 * cam.zoom) - 160, vy1 = cam.y + Hh / (2 * cam.zoom) + 80;
+
+  // merge static props + agents, sort, draw
+  fpsAgents.length = 0;
+  for (const sp of staticProps) {
+    if (sp.sx + sp.sw < vx0 || sp.sx > vx1 || sp.sy + sp.sh < vy0 || sp.sy > vy1) continue;
+    fpsAgents.push(sp);
+  }
+  for (const c of citizens) {
+    const ix = isoX(c.wx, c.wy), iy = isoY(c.wx, c.wy);
+    if (ix < vx0 || ix > vx1 || iy < vy0 || iy > vy1) continue;
+    fpsAgents.push({ kind: 'citizen', c, depth: c.wx + c.wy });
+  }
+  for (const c of cars) {
+    const p = carPos(c);
+    const ix = isoX(p.wx, p.wy), iy = isoY(p.wx, p.wy);
+    if (ix < vx0 || ix > vx1 || iy < vy0 || iy > vy1) continue;
+    fpsAgents.push({ kind: 'carA', c, depth: p.wx + p.wy });
+  }
+  fpsAgents.sort((a, b) => a.depth - b.depth);
+
+  for (const d of fpsAgents) {
+    switch (d.kind) {
+      case 'bldg': {
+        const b = d.b;
+        ctx.drawImage(b.spriteDay, b.sx, b.sy, b.sw, b.sh);
+        if (nightBlend > 0.02) {
+          ctx.globalAlpha = nightBlend;
+          ctx.drawImage(b.spriteNight, b.sx, b.sy, b.sw, b.sh);
+          ctx.globalAlpha = 1;
+        }
+        break;
+      }
+      case 'tree':
+        ctx.drawImage(treeSprites[d.variant], d.sx, d.sy, d.sw, d.sh);
+        break;
+      case 'lamp': drawLamp(d, nightBlend); break;
+      case 'tlight': drawTrafficLight(d); break;
+      case 'statue': drawStatue(d, now); break;
+      case 'cow': drawCowProp(d); break;
+      case 'citizen': drawCitizenSprite(d.c, now); break;
+      case 'carA': drawCarSprite(d.c, nightBlend); break;
+    }
+  }
+
+  // ---------- night darkness + lights ----------
+  if (sky.amb > 0.04) {
+    const lg = lightCtx;
+    lg.setTransform(1, 0, 0, 1, 0, 0);
+    lg.clearRect(0, 0, lightCv.width, lightCv.height);
+    lg.fillStyle = `rgba(9,13,40,${sky.amb})`;
+    lg.fillRect(0, 0, lightCv.width, lightCv.height);
+    lg.globalCompositeOperation = 'destination-out';
+    const punch = (ix, iy, r, a) => {
+      const s = isoToScreen(ix, iy);
+      if (s.sx < -r || s.sx > W + r || s.sy < -r || s.sy > Hh + r) return;
+      const rr = r * cam.zoom * DPR;
+      const grd = lg.createRadialGradient(s.sx * DPR, s.sy * DPR, 0, s.sx * DPR, s.sy * DPR, rr);
+      grd.addColorStop(0, `rgba(255,255,255,${a})`);
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      lg.fillStyle = grd;
+      lg.fillRect(s.sx * DPR - rr, s.sy * DPR - rr, rr * 2, rr * 2);
+    };
+    for (const l of lamps) punch(isoX(l.wx, l.wy), isoY(l.wx, l.wy) - 26, 55, 0.85);
+    for (const c of cars) {
+      if (c.speed < 0.05) continue;
+      const p = carPos(c);
+      const [dx, dy] = DIRV[c.dir];
+      punch(isoX(p.wx + dx * 0.8, p.wy + dy * 0.8), isoY(p.wx + dx * 0.8, p.wy + dy * 0.8), 42, 0.7);
+    }
+    if (owner) punch(isoX(owner.wx, owner.wy), isoY(owner.wx, owner.wy) - 10, 50, 0.9);
+    for (let i = 0; i < activeCount; i++) {
+      const b = cityLots[i];
+      const occ = OCC[b.type]((clockMin % 1440) / 60);
+      if (occ > 0.25) punch(b.sx + b.sw / 2, b.sy + b.sh * 0.55, b.sw * 0.5, 0.35);
+    }
+    lg.globalCompositeOperation = 'source-over';
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(lightCv, 0, 0);
+
+    // warm glow cores
+    ctx.globalCompositeOperation = 'lighter';
+    const warm = (ix, iy, r, a) => {
+      const s = isoToScreen(ix, iy);
+      if (s.sx < -r || s.sx > W + r || s.sy < -r || s.sy > Hh + r) return;
+      const rr = Math.max(2, r * cam.zoom) * DPR;
+      const grd = ctx.createRadialGradient(s.sx * DPR, s.sy * DPR, 0, s.sx * DPR, s.sy * DPR, rr);
+      grd.addColorStop(0, `rgba(255,205,110,${a * nightBlend})`);
+      grd.addColorStop(1, 'rgba(255,205,110,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(s.sx * DPR - rr, s.sy * DPR - rr, rr * 2, rr * 2);
+    };
+    for (const l of lamps) warm(isoX(l.wx, l.wy), isoY(l.wx, l.wy) - 27, 18, 0.30);
+    if (owner) warm(isoX(owner.wx, owner.wy), isoY(owner.wx, owner.wy) - 12, 22, 0.25);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+}
+
+/* ================================================================
+   16. UI
+   ================================================================ */
+const energyPopup = document.getElementById('energyPopup');
+const profilePopup = document.getElementById('profilePopup');
+let openBuilding = null, openCar = null, openCitizen = null;
+function closePopups() {
+  energyPopup.classList.remove('open');
+  profilePopup.classList.remove('open');
+  openBuilding = openCar = openCitizen = null;
+}
+function openProfile() {
+  closePopups();
+  profilePopup.classList.add('open');
+  profilePopup.querySelector('.close').focus();
+}
+function openEnergy(b) {
+  closePopups();
+  openBuilding = b;
+  const typeLabel = b.type === 'res' ? 'Residential' : b.type === 'office' ? 'Office' : 'Shop';
+  document.getElementById('energyTitle').textContent = b.name;
+  document.getElementById('energySub').textContent =
+    `${b.landmark ? 'Landmark · ' : ''}${typeLabel} · ${b.floors} floor${b.floors > 1 ? 's' : ''} — electricity, last 24 h`;
+  energyPopup.classList.add('open');
+  energyPopup.querySelector('.close').focus();
+  drawEnergyChart(b);
+}
+function openCarPopup(c) {
+  closePopups();
+  openCar = c;
+  document.getElementById('energyTitle').textContent = c.name;
+  document.getElementById('energySub').textContent = 'Vehicle telemetry — speed, last 2 h';
+  energyPopup.classList.add('open');
+  energyPopup.querySelector('.close').focus();
+  drawCarChart(c);
+}
+function openCitizenPopup(c) {
+  closePopups();
+  openCitizen = c;
+  document.getElementById('energyTitle').textContent = c.name;
+  document.getElementById('energySub').textContent = 'Citizen activity — steps per hour, last 24 h';
+  energyPopup.classList.add('open');
+  energyPopup.querySelector('.close').focus();
+  drawCitizenChart(c);
+}
+// generic series chart: vals oldest->newest (may be shorter than capacity → right-aligned)
+function renderChart(vals, opt) {
+  const cv = document.getElementById('energyChart');
+  const g = cv.getContext('2d');
+  const cw = cv.width, ch = cv.height;
+  g.clearRect(0, 0, cw, ch);
+  if (!vals.length) return 0;
+  const padL = 56, padR = 16, padT = 14, padB = 34;
+  const pw2 = cw - padL - padR, ph2 = ch - padT - padB;
+  let vmax = opt.yMin || 10;
+  for (const v of vals) if (v > vmax) vmax = v;
+  vmax = Math.ceil(vmax / opt.yStep) * opt.yStep;
+  // grid + y labels
+  g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 1;
+  g.fillStyle = '#aab4cc'; g.font = '20px system-ui, sans-serif'; g.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + ph2 - (ph2 * i) / 4;
+    g.beginPath(); g.moveTo(padL, y); g.lineTo(cw - padR, y); g.stroke();
+    g.fillText(Math.round((vmax * i) / 4), padL - 8, y + 7);
+  }
+  g.textAlign = 'center';
+  for (const t of opt.xTicks) g.fillText(t.label, padL + pw2 * t.frac, ch - 10);
+  const cap = opt.capacity || vals.length;
+  const X = i => padL + pw2 * ((cap - vals.length + i) / Math.max(1, cap - 1));
+  const Y = v => padT + ph2 - (ph2 * v) / vmax;
+  // stopped-at-light band along the baseline
+  if (opt.stops) {
+    g.fillStyle = 'rgba(232,69,69,0.85)';
+    const sw2 = pw2 / Math.max(1, cap - 1);
+    for (let i = 0; i < vals.length; i++) {
+      if (opt.stops[i]) g.fillRect(X(i) - sw2 / 2 - 0.5, padT + ph2 - 4, sw2 + 1, 4);
+    }
+  }
+  // area + line
+  g.beginPath();
+  for (let i = 0; i < vals.length; i++) i ? g.lineTo(X(i), Y(vals[i])) : g.moveTo(X(i), Y(vals[i]));
+  g.strokeStyle = opt.color; g.lineWidth = 3; g.stroke();
+  g.lineTo(X(vals.length - 1), padT + ph2); g.lineTo(X(0), padT + ph2); g.closePath();
+  g.fillStyle = opt.fill; g.fill();
+  const lastV = vals[vals.length - 1];
+  g.fillStyle = opt.color;
+  g.beginPath(); g.arc(X(vals.length - 1), Y(lastV), 6, 0, 7); g.fill();
+  return lastV;
+}
+function timeTicks(windowMin, n) {   // n+1 ticks spanning the last windowMin game-minutes
+  const ticks = [];
+  for (let k = 0; k <= n; k++) {
+    const m = clockMin - windowMin * (1 - k / n);
+    const mm = ((m % 1440) + 1440) % 1440;
+    ticks.push({ frac: k / n, label: String(Math.floor(mm / 60)).padStart(2, '0') + ':' + String(Math.floor(mm % 60)).padStart(2, '0') });
+  }
+  return ticks;
+}
+function drawEnergyChart(b) {
+  const vals = [];
+  for (let i = 0; i < HISTORY_LEN; i++) vals.push(b.history[(b.histIdx + i) % HISTORY_LEN]);
+  const lastV = renderChart(vals, {
+    yStep: 50, color: '#ffc94d', fill: 'rgba(255,201,77,0.16)',
+    xTicks: timeTicks((HISTORY_LEN - 1) * SAMPLE_MIN, 6)
+  });
+  document.getElementById('energyNow').innerHTML = 'Now: <b>' + Math.round(lastV) + '</b> kW';
+}
+function drawCarChart(c) {
+  const n = c.spdCount;
+  const vals = [], stops = [];
+  for (let i = 0; i < n; i++) {
+    const v = n < CAR_SPD_LEN ? c.spd[i] : c.spd[(c.spdIdx + i) % CAR_SPD_LEN];
+    vals.push(v * KMH_PER_TILE);
+    stops.push(v < 0.05);
+  }
+  if (!vals.length) { vals.push(c.speed * KMH_PER_TILE); stops.push(c.speed < 0.05); }
+  const lastV = renderChart(vals, {
+    yStep: 10, yMin: 20, capacity: CAR_SPD_LEN, stops,
+    color: '#5fd4a8', fill: 'rgba(95,212,168,0.16)',
+    xTicks: timeTicks(CAR_SPD_LEN * CAR_SPD_DT, 4)
+  });
+  let stoppedMin = 0;
+  for (const s of stops) if (s) stoppedMin += CAR_SPD_DT;
+  const windowMin = Math.max(1, Math.round(vals.length * CAR_SPD_DT));
+  document.getElementById('energyNow').innerHTML =
+    'Now: <b>' + Math.round(lastV) + '</b> km/h · stopped at lights ' + Math.round(stoppedMin) + ' of last ' + windowMin + ' min';
+}
+function drawCitizenChart(c) {
+  const rate = STEPS_PER_TILE * (60 / SAMPLE_MIN);   // bucket distance → steps per hour
+  const vals = [];
+  for (let k = 1; k < HISTORY_LEN; k++) vals.push(c.steps[(c.stepIdx + k) % HISTORY_LEN] * rate);
+  const frac = clamp((clockMin - lastSampleMin) / SAMPLE_MIN, 0.15, 1);
+  vals.push(c.steps[c.stepIdx] / frac * rate);       // current bucket, scaled to full rate
+  const lastV = renderChart(vals, {
+    yStep: 1000, yMin: 2000, color: '#7aa7ff', fill: 'rgba(122,167,255,0.16)',
+    xTicks: timeTicks((HISTORY_LEN - 1) * SAMPLE_MIN, 6)
+  });
+  const status = c.waiting ? 'Waiting at a light' : 'Walking';
+  document.getElementById('energyNow').innerHTML =
+    status + ' · <b>' + Math.round(lastV).toLocaleString() + '</b> steps/h · waited ' +
+    Math.round(c.waitToday) + ' min at lights today';
+}
+
+for (const el of document.querySelectorAll('[data-close]')) {
+  el.addEventListener('click', closePopups);
+}
+window.addEventListener('keydown', e => { if (e.key === 'Escape') closePopups(); });
+
+// controls
+let paused = false, autoPaused = false, simSpeed = 1;
+const btnPause = document.getElementById('btnPause');
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.textContent = paused ? '▶' : '⏸';
+  btnPause.classList.toggle('active', paused);
+});
+for (const b of document.querySelectorAll('#speedBtns button')) {
+  b.addEventListener('click', () => {
+    simSpeed = +b.dataset.speed;
+    for (const o of document.querySelectorAll('#speedBtns button')) o.classList.toggle('active', o === b);
+  });
+}
+document.getElementById('btnZoomIn').addEventListener('click', () => zoomAt(W / 2, Hh / 2, 1.3));
+document.getElementById('btnZoomOut').addEventListener('click', () => zoomAt(W / 2, Hh / 2, 1 / 1.3));
+document.getElementById('findLai').addEventListener('click', () => {
+  if (!owner) return;
+  camAnim = { tx: isoX(owner.wx, owner.wy), ty: isoY(owner.wx, owner.wy), tz: Math.max(cam.zoom, 1.4) };
+});
+const popSlider = document.getElementById('popSlider');
+popSlider.addEventListener('input', () => {
+  setPopulation(+popSlider.value);
+  document.getElementById('popVal').textContent = popSlider.value;
+});
+const bldgSlider = document.getElementById('bldgSlider');
+let bldgPending = null;
+bldgSlider.addEventListener('input', () => {
+  document.getElementById('bldgVal').textContent = bldgSlider.value;
+  if (bldgPending) cancelAnimationFrame(bldgPending);
+  bldgPending = requestAnimationFrame(() => { setBuildingCount(+bldgSlider.value); bldgPending = null; });
+});
+document.addEventListener('visibilitychange', () => { autoPaused = document.hidden; });
+
+// HUD refresh
+let lastHud = 0;
+function updateHUD(now) {
+  if (now - lastHud < 0.25) return;
+  lastHud = now;
+  const m = Math.floor(clockMin % 1440);
+  const hh2 = String(Math.floor(m / 60)).padStart(2, '0');
+  const mm = String(m % 60).padStart(2, '0');
+  document.getElementById('clockText').textContent = hh2 + ':' + mm;
+  const hour = m / 60;
+  document.getElementById('clockGlyph').textContent = (hour >= 6.5 && hour < 18.5) ? '☀️' : '🌙';
+  document.getElementById('statPop').textContent = citizens.length;
+  document.getElementById('statCars').textContent = cars.length;
+  if (openCar) drawCarChart(openCar);          // live telemetry refresh
+  else if (openCitizen) drawCitizenChart(openCitizen);
+}
+
+/* ================================================================
+   17. MAIN
+   ================================================================ */
+const STEP = 1 / 60;
+let acc = 0, lastT = 0, nowSec = 0;
+
+let carSampleAcc = 0, curDay = 0;
+function update(dt) {
+  simClock += dt;
+  clockMin += dt;             // 1 sim second = 1 game minute
+  updateCitizens(dt);
+  updateCars(dt);
+  sampleEnergy(clockMin);
+  carSampleAcc += dt;
+  while (carSampleAcc >= CAR_SPD_DT) {
+    carSampleAcc -= CAR_SPD_DT;
+    for (const c of cars) {
+      c.spd[c.spdIdx] = c.speed;
+      c.spdIdx = (c.spdIdx + 1) % CAR_SPD_LEN;
+      if (c.spdCount < CAR_SPD_LEN) c.spdCount++;
+    }
+  }
+  const day = Math.floor(clockMin / 1440);
+  if (day !== curDay) {
+    curDay = day;
+    for (const c of citizens) c.waitToday = 0;
+  }
+}
+
+function frame(tms) {
+  requestAnimationFrame(frame);
+  const t = tms / 1000;
+  let realDt = Math.min(0.1, t - lastT || 0.016);
+  lastT = t;
+  nowSec = t;
+  if (!paused && !autoPaused) {
+    acc += realDt * simSpeed;
+    let guard = 0;
+    while (acc >= STEP && guard++ < 16) { update(STEP); acc -= STEP; }
+    if (guard >= 16) acc = 0;
+  }
+  if (camAnim) {
+    cam.x = lerp(cam.x, camAnim.tx, 0.12);
+    cam.y = lerp(cam.y, camAnim.ty, 0.12);
+    cam.zoom = lerp(cam.zoom, camAnim.tz, 0.12);
+    if (Math.abs(cam.x - camAnim.tx) < 1 && Math.abs(cam.y - camAnim.ty) < 1) camAnim = null;
+    clampCam();
+  }
+  render(t);
+  updateHUD(t);
+}
+
+function init() {
+  resize();
+  generateCity();
+  buildSidewalkGraph();
+  for (const [key] of walkAdj) walkNodes.push(key);
+  makeTreeSprites();
+
+  // energy setup
+  for (const b of cityLots) { initEnergy(b); prefillHistory(b, clockMin); }
+  lastSampleMin = clockMin;
+
+  // buildings
+  bldgSlider.max = cityLots.length;
+  bldgSlider.min = Math.min(10, cityLots.length);
+  bldgSlider.value = cityLots.length;
+  setBuildingCount(cityLots.length);
+
+  // agents
+  owner = spawnCitizen(true);
+  // place the owner near the centre of town
+  let bestKey = walkNodes[0], bd = 1e9;
+  for (const key of walkNodes) {
+    const p = nodePos(key);
+    const d = Math.abs(p.wx - GRID / 2) + Math.abs(p.wy - GRID / 2);
+    if (d < bd) { bd = d; bestKey = key; }
+  }
+  owner.from = owner.to = owner.prev = bestKey;
+  const op = nodePos(bestKey);
+  owner.wx = op.wx; owner.wy = op.wy; owner.t = 1;
+  pickNextWalk(owner);
+  setPopulation(+popSlider.value);
+
+  // camera on the owner
+  cam.x = isoX(owner.wx, owner.wy);
+  cam.y = isoY(owner.wx, owner.wy);
+  cam.zoom = clamp(Math.min(W / 2000, 1.0), 0.55, 1.0);
+
+  setTimeout(() => document.getElementById('toast').classList.add('hide'), 9000);
+  requestAnimationFrame(frame);
+}
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="City energy analysis — Python simulation backend, browser renders only.">
+<title>City Energy Analysis</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --glass: rgba(16, 22, 40, 0.78);
+    --glass-border: rgba(255,255,255,0.14);
+    --text: #eef2fa;
+    --text-dim: #aab4cc;
+    --accent: #ffc94d;
+    --accent2: #5fd4a8;
+  }
+  *{ box-sizing: border-box; }
+  html, body{ margin:0; padding:0; height:100%; overflow:hidden;
+    font-family: "Segoe UI", "Noto Sans", system-ui, -apple-system, sans-serif;
+    background:#0b1026; color:var(--text); }
+  #city{ position:fixed; inset:0; width:100%; height:100%; display:block;
+    touch-action:none; cursor:grab; }
+  #city.dragging{ cursor:grabbing; }
+  #city.pointing{ cursor:pointer; }
+
+  .panel{
+    position:fixed; background:var(--glass); border:1px solid var(--glass-border);
+    border-radius:14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.35); padding:12px 14px; z-index:10;
+  }
+
+  /* HUD */
+  #hud{ top:14px; left:14px; min-width:200px; }
+  #hud h1{ margin:0 0 2px; font-size:17px; letter-spacing:0.4px; }
+  #hud .clock{ font-size:22px; font-variant-numeric:tabular-nums; font-weight:700; margin:2px 0 6px; }
+  #hud .clock .glyph{ font-size:16px; margin-left:6px; }
+  #hud .stat{ display:flex; justify-content:space-between; gap:18px; font-size:13px;
+    color:var(--text-dim); padding:1px 0; }
+  #hud .stat b{ color:var(--text); font-variant-numeric:tabular-nums; }
+  #hud .backend{ margin-top:8px; font-size:12px; color:var(--text-dim);
+    display:flex; align-items:center; gap:7px; }
+  #hud .backend .dot{ width:9px; height:9px; border-radius:50%; background:#888; flex:none; }
+  #hud .backend.live .dot{ background:var(--accent2); box-shadow:0 0 8px var(--accent2); }
+  #hud .backend.dead .dot{ background:#e84545; box-shadow:0 0 8px #e84545; }
+
+  /* Detail popup (building / car / person) */
+  #popup{ top:80px; right:16px; width:340px; max-width:calc(100vw - 24px); z-index:20; display:none; }
+  #popup.open{ display:block; }
+  #popup .close{ position:absolute; top:8px; right:10px; border:none; background:none;
+    color:var(--text-dim); font-size:20px; cursor:pointer; line-height:1; padding:4px; }
+  #popup .close:hover{ color:var(--text); }
+  #popup h2{ margin:0 36px 2px 0; font-size:17px; }
+  #popup .sub{ margin:0 0 10px; font-size:12.5px; color:var(--text-dim); }
+  #chart{ width:100%; height:180px; display:block; border-radius:8px; background:rgba(8,12,28,0.6); }
+  #popupNow{ margin:8px 0 0; font-size:14px; }
+  #popupNow b{ color:var(--accent); font-size:18px; font-variant-numeric:tabular-nums; }
+
+  /* tooltip */
+  #tooltip{ position:fixed; pointer-events:none; z-index:30; display:none;
+    background:rgba(10,14,30,0.92); border:1px solid var(--glass-border); color:var(--text);
+    font-size:12px; padding:4px 9px; border-radius:7px; white-space:nowrap; }
+
+  /* hint toast */
+  #toast{ top:14px; left:50%; transform:translateX(-50%); font-size:13px; color:var(--text);
+    display:flex; gap:10px; align-items:center; transition:opacity 0.8s; max-width:92vw; }
+  #toast.hide{ opacity:0; pointer-events:none; }
+  #toast .dot{ width:10px; height:10px; border-radius:50%; background:var(--accent);
+    box-shadow:0 0 10px var(--accent); flex:none; }
+
+  @media (max-width: 760px){
+    #hud{ min-width:160px; padding:10px 12px; }
+    #hud .clock{ font-size:18px; }
+    #popup{ top:auto; bottom:16px; right:12px; left:12px; width:auto; }
+    #toast{ top:auto; bottom:14px; left:12px; right:12px; transform:none; font-size:12px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="city" aria-label="Isometric city scene — click the building, car or person to query the analysis backend"></canvas>
+
+<div id="hud" class="panel">
+  <h1>City Energy Lab</h1>
+  <div class="clock"><span id="clockText">--:--</span><span class="glyph" id="clockGlyph">☀️</span></div>
+  <div class="stat"><span>Buildings</span><b id="statBldg">–</b></div>
+  <div class="stat"><span>Vehicles</span><b id="statCars">–</b></div>
+  <div class="stat"><span>People</span><b id="statPop">–</b></div>
+  <div class="stat"><span>Grid load</span><b id="statLoad">–</b></div>
+  <div class="backend" id="backendBadge"><span class="dot"></span><span id="backendText">connecting…</span></div>
+</div>
+
+<div id="popup" class="panel" role="dialog" aria-labelledby="popupTitle">
+  <button class="close" id="popupClose" aria-label="Close">✕</button>
+  <h2 id="popupTitle"></h2>
+  <p class="sub" id="popupSub"></p>
+  <canvas id="chart" width="640" height="360"></canvas>
+  <p id="popupNow"></p>
+</div>
+
+<div id="toast" class="panel"><span class="dot"></span><span>Real Cambridge map — drag to pan, scroll to zoom. Click any <b>building</b>, <b>car</b> or <b>person</b>; results come from the Python backend.</span></div>
+
+<div id="tooltip"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

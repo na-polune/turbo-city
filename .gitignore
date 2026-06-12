@@ -1,0 +1,22 @@
+# downloaded input data (OSM cache) — regenerated on first run, keeps the code general
+backend/data/
+
+# python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+
+# environment / secrets
+.env
+
+# editor / OS noise
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# throwaway test artifacts
+_shots/
+_ui_smoke.py
