@@ -55,6 +55,27 @@
   #hud .backend.live .dot{ background:var(--accent2); box-shadow:0 0 8px var(--accent2); }
   #hud .backend.dead .dot{ background:#e84545; box-shadow:0 0 8px #e84545; }
 
+  /* time controls */
+  #timeControls{ margin-top:9px; }
+  #timeSliderRow{ display:flex; align-items:center; gap:7px; margin-bottom:5px; }
+  #playBtn{ width:28px; height:28px; border-radius:8px; border:1px solid var(--glass-border);
+    background:rgba(255,255,255,0.08); color:var(--text); font-size:14px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; flex:none; padding:0; }
+  #playBtn:hover{ background:rgba(255,255,255,0.18); }
+  #timeSlider{ flex:1; -webkit-appearance:none; appearance:none; height:4px;
+    border-radius:2px; background:rgba(255,255,255,0.15); outline:none; cursor:pointer; }
+  #timeSlider::-webkit-slider-thumb{ -webkit-appearance:none; width:14px; height:14px;
+    border-radius:50%; background:var(--accent); cursor:pointer; }
+  #timeSlider::-moz-range-thumb{ width:14px; height:14px; border:none;
+    border-radius:50%; background:var(--accent); cursor:pointer; }
+  #speedRow{ display:flex; gap:5px; }
+  #speedRow button{ flex:1; border:1px solid var(--glass-border); background:rgba(255,255,255,0.06);
+    color:var(--text-dim); font:inherit; font-size:11px; padding:3px 4px;
+    border-radius:7px; cursor:pointer; }
+  #speedRow button:hover{ color:var(--text); }
+  #speedRow button.active{ background:var(--accent2); border-color:var(--accent2);
+    color:#0c2018; font-weight:600; }
+
   /* Detail popup (building / car / person) */
   #popup{ top:80px; right:16px; width:340px; max-width:calc(100vw - 24px); z-index:20; display:none; }
   #popup.open{ display:block; }
@@ -124,6 +145,18 @@
     <button data-btype="shop">🛍 Shop</button>
   </div>
   <div class="backend" id="backendBadge"><span class="dot"></span><span id="backendText">connecting…</span></div>
+  <div id="timeControls">
+    <div id="timeSliderRow">
+      <button id="playBtn" title="Play / Pause">⏸</button>
+      <input id="timeSlider" type="range" min="0" max="1439" step="1" value="0" title="Drag to jump to a time of day">
+    </div>
+    <div id="speedRow">
+      <button data-speed="1">1×</button>
+      <button data-speed="10">10×</button>
+      <button data-speed="60" class="active">60×</button>
+      <button data-speed="360">360×</button>
+    </div>
+  </div>
 </div>
 
 <div id="popup" class="panel" role="dialog" aria-labelledby="popupTitle">

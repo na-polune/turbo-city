@@ -578,6 +578,13 @@ function updateHUD(s) {
   const kw = s.total_load_kw;
   document.getElementById('statLoad').textContent =
     kw >= 1000 ? (kw / 1000).toFixed(1) + ' MW' : kw + ' kW';
+  // sync time controls
+  if (!sliderDragging) {
+    timeSlider.value = m;
+    const paused = s.sim_min_per_sec === 0;
+    playBtn.textContent = paused ? '▶' : '⏸';
+    if (!paused) setSpeedUI(s.sim_min_per_sec);
+  }
 }
 
 /* ---------------- hit testing / tooltip / click ---------------- */
@@ -856,6 +863,89 @@ function secTicks(windowSec, n) {
     ticks.push({ frac: k / n, label: ago === 0 ? 'now' : `-${ago}s` });
   }
   return ticks;
+}
+
+/* ---------------- time controls ---------------- */
+const timeSlider  = document.getElementById('timeSlider');
+const playBtn     = document.getElementById('playBtn');
+const speedBtns   = document.querySelectorAll('#speedRow button');
+let   sliderDragging = false;
+let   speedBeforeDrag = null;
+
+function setSpeedUI(mps) {
+  for (const b of speedBtns)
+    b.classList.toggle('active', Number(b.dataset.speed) === mps);
+}
+function sendSpeed(mps) {
+  fetch('/api/edit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ op: 'set_speed', sim_min_per_sec: mps })
+  }).catch(() => {});
+  setSpeedUI(mps);
+}
+function sendSeek(clockMin) {
+  fetch('/api/edit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ op: 'seek_time', clock_min: clockMin })
+  }).catch(() => {});
+}
+
+// Sync slider position from live state (only when not being dragged)
+function syncSlider(clockMin) {
+  if (sliderDragging) return;
+  timeSlider.value = Math.round(clockMin % 1440);
+}
+
+// Dragging: pause immediately, seek on every move, restore speed on release
+timeSlider.addEventListener('mousedown', () => {
+  sliderDragging = true;
+  speedBeforeDrag = curState ? curState.sim_min_per_sec : 1;
+  sendSpeed(0);
+  playBtn.textContent = '▶';
+});
+timeSlider.addEventListener('touchstart', () => {
+  sliderDragging = true;
+  speedBeforeDrag = curState ? curState.sim_min_per_sec : 1;
+  sendSpeed(0);
+  playBtn.textContent = '▶';
+}, { passive: true });
+timeSlider.addEventListener('input', () => {
+  sendSeek(Number(timeSlider.value));
+});
+function endSliderDrag() {
+  if (!sliderDragging) return;
+  sliderDragging = false;
+  const resume = speedBeforeDrag || 1;
+  sendSpeed(resume);
+  playBtn.textContent = resume > 0 ? '⏸' : '▶';
+  setSpeedUI(resume);
+}
+timeSlider.addEventListener('mouseup', endSliderDrag);
+timeSlider.addEventListener('touchend', endSliderDrag);
+
+// Play / pause toggle
+playBtn.addEventListener('click', () => {
+  const paused = curState && curState.sim_min_per_sec === 0;
+  if (paused) {
+    const resume = speedBeforeDrag || 1;
+    sendSpeed(resume);
+    playBtn.textContent = '⏸';
+  } else {
+    speedBeforeDrag = curState ? curState.sim_min_per_sec : 1;
+    sendSpeed(0);
+    playBtn.textContent = '▶';
+  }
+});
+
+// Speed buttons
+for (const b of speedBtns) {
+  b.addEventListener('click', () => {
+    const mps = Number(b.dataset.speed);
+    sendSpeed(mps);
+    playBtn.textContent = '⏸';
+  });
 }
 
 /* ---------------- boot ---------------- */

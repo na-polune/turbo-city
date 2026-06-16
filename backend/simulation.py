@@ -9,12 +9,12 @@ same design as the original toy version, just on real geometry in meters.
 import math
 import random
 
-from . import config, geometry, grid_world, osm_world
+from . import config, energy, geometry, grid_world, osm_world
 from .constants import (
     TICK_HZ, SIM_MIN_PER_SEC, SAMPLE_MIN, HISTORY_LEN,
     CAR_SPD_LEN, CAR_SPD_DT, STEPS_PER_M,
     CAR_SPEED_MPS, PERSON_SPEED_MPS,
-    OCC, PEAK_COEF, TILE_M2,
+    OCC,
     MAX_FLOORS, MAX_CARS, MAX_PEOPLE, MAX_BUILDINGS, MIN_BUILDING_M2, DEFAULT_FLOORS,
     CAR_NAMES, CAR_COLORS, FIRST, LAST, SHIRTS,
 )
@@ -44,42 +44,59 @@ class Building:
         self.floors = data["floors"]
         self.area_m2 = data["area_m2"]
         self.center = data["center"]
-        self._recompute_coeffs()
-        self.noise = 0.0
+        self.T_in = 0.5 * (energy.T_HEAT[self.type] + energy.T_COOL[self.type])
         self.load_kw = 0.0
+        self.hvac_kw = 0.0
+        self.elec_kw = 0.0
+        self.light_kw = 0.0
         self.history = [0.0] * HISTORY_LEN
         self.hist_idx = 0
 
-    def _recompute_coeffs(self):
-        tiles = self.area_m2 / TILE_M2
-        self.base = 2 + self.floors * 1.4 * tiles
-        self.peak = self.floors * PEAK_COEF[self.type] * tiles
-
     def set_floors(self, floors):
         self.floors = floors
-        self._recompute_coeffs()    # load changes from the next tick on
 
     def occupancy(self, hour):
         return piecewise(OCC[self.type], hour)
 
-    def compute_load(self, hour):
-        self.noise += (self.rng.random() - 0.5) * 0.05
-        self.noise = max(-0.12, min(0.12, self.noise))
-        return max(0.5, (self.base + self.peak * self.occupancy(hour)) * (1 + self.noise))
+    def step_thermal(self, T_out, hour, sim_dt_s):
+        """Advance indoor temperature by sim_dt_s simulation-seconds (1C RC node)."""
+        occ = self.occupancy(hour)
+        self.T_in = energy.step_T_in(
+            self.T_in, T_out, self.area_m2, self.floors, self.type, occ, hour, sim_dt_s)
 
     def estimate_load(self, hour):
-        """Cheap per-tick estimate: occupancy curve with the last sampled noise."""
-        return max(0.5, (self.base + self.peak * self.occupancy(hour)) * (1 + self.noise))
+        """Compute load from current T_in and store component breakdown."""
+        occ = self.occupancy(hour)
+        load, h, e, l = energy.total_load_kw(
+            self.T_in, self.area_m2, self.floors, self.type, occ, hour)
+        self.hvac_kw = h
+        self.elec_kw = e
+        self.light_kw = l
+        return load
 
     def prefill(self, now_min):
+        """Warm-start T_in and fill load history by replaying the past 24 h."""
+        T_in = 0.5 * (energy.T_HEAT[self.type] + energy.T_COOL[self.type])
+        hv = el = li = 0.0
         for i in range(HISTORY_LEN):
             m = now_min - (HISTORY_LEN - 1 - i) * SAMPLE_MIN
-            self.history[i] = self.compute_load((m % 1440) / 60.0)
+            h = (m % 1440) / 60.0
+            T_out = energy.outdoor_temp_c(m)
+            occ = self.occupancy(h)
+            T_in = energy.step_T_in(
+                T_in, T_out, self.area_m2, self.floors, self.type, occ, h, SAMPLE_MIN * 60)
+            load, hv, el, li = energy.total_load_kw(
+                T_in, self.area_m2, self.floors, self.type, occ, h)
+            self.history[i] = load
         self.hist_idx = 0
+        self.T_in = T_in
         self.load_kw = self.history[-1]
+        self.hvac_kw = hv
+        self.elec_kw = el
+        self.light_kw = li
 
     def sample(self, hour):
-        self.load_kw = self.compute_load(hour)
+        self.load_kw = self.estimate_load(hour)
         self.history[self.hist_idx] = self.load_kw
         self.hist_idx = (self.hist_idx + 1) % HISTORY_LEN
 
@@ -283,11 +300,15 @@ class Simulation:
         """Advance the world by dt real seconds."""
         self.clock_min += dt * self.sim_min_per_sec
         hour = (self.clock_min % 1440) / 60.0
+        sim_dt_s = dt * self.sim_min_per_sec * 60.0
+        T_out = energy.outdoor_temp_c(self.clock_min)
 
         for c in self.cars:
             c.move(dt)
         for p in self.people:
             p.move(dt)
+        for b in self.buildings:
+            b.step_thermal(T_out, hour, sim_dt_s)
         self.total_load_kw = sum(b.estimate_load(hour) for b in self.buildings)
 
         while self.clock_min - self.last_sample_min >= SAMPLE_MIN:
@@ -435,8 +456,8 @@ class Simulation:
         if len(self.buildings) >= MAX_BUILDINGS:
             raise ValueError(f"building limit reached ({MAX_BUILDINGS})")
         btype = op.get("type", "res")
-        if btype not in PEAK_COEF:
-            raise ValueError(f"unknown building type {btype!r}, expected one of {sorted(PEAK_COEF)}")
+        if btype not in energy.BUILDING_TYPES:
+            raise ValueError(f"unknown building type {btype!r}, expected one of {sorted(energy.BUILDING_TYPES)}")
         floors = self._as_int(op.get("floors", DEFAULT_FLOORS[btype]))
         if floors is None or not 1 <= floors <= MAX_FLOORS:
             raise ValueError(f"floors must be an integer in 1..{MAX_FLOORS}")
@@ -484,6 +505,22 @@ class Simulation:
         self.buildings.remove(b)
         self.world_data["buildings"] = [d for d in self.world_data["buildings"] if d["id"] != b.id]
 
+    def _edit_set_speed(self, op):
+        speed = op.get("sim_min_per_sec")
+        if not isinstance(speed, (int, float)) or isinstance(speed, bool) or speed < 0:
+            raise ValueError("sim_min_per_sec must be a non-negative number")
+        self.sim_min_per_sec = float(speed)
+
+    def _edit_seek_time(self, op):
+        clock_min = op.get("clock_min")
+        if not isinstance(clock_min, (int, float)) or isinstance(clock_min, bool):
+            raise ValueError("clock_min must be a number (minutes since midnight)")
+        self.clock_min = float(clock_min) % 1440
+        self.last_sample_min = self.clock_min
+        for b in self.buildings:
+            b.prefill(self.clock_min)
+        self.total_load_kw = sum(b.load_kw for b in self.buildings)
+
     _EDIT_OPS = {
         "set_floors": _edit_set_floors,
         "spawn_car": _edit_spawn_car,
@@ -494,6 +531,8 @@ class Simulation:
         "remove_road": _edit_remove_road,
         "add_building": _edit_add_building,
         "remove_building": _edit_remove_building,
+        "set_speed": _edit_set_speed,
+        "seek_time": _edit_seek_time,
     }
 
     # ---------- API snapshots ----------
@@ -520,6 +559,7 @@ class Simulation:
         return {
             "world_rev": self.world_rev,
             "clock_min": round(self.clock_min, 2),
+            "sim_min_per_sec": self.sim_min_per_sec,
             "total_load_kw": round(self.total_load_kw),
             "cars": [{
                 "id": c.id, "name": c.name, "color": c.color,
@@ -537,11 +577,17 @@ class Simulation:
         b = self._find(self.buildings, i)
         if b is None:
             return None
+        hour = (self.clock_min % 1440) / 60.0
         return {
             "id": b.id, "name": b.name, "type": b.type,
             "floors": b.floors, "area_m2": b.area_m2,
             "load_kw": round(b.load_kw, 1),
-            "occupancy": round(b.occupancy((self.clock_min % 1440) / 60.0), 2),
+            "hvac_kw": round(b.hvac_kw, 1),
+            "elec_kw": round(b.elec_kw, 1),
+            "light_kw": round(b.light_kw, 1),
+            "t_in_c": round(b.T_in, 1),
+            "t_out_c": round(energy.outdoor_temp_c(self.clock_min), 1),
+            "occupancy": round(b.occupancy(hour), 2),
             "sample_min": SAMPLE_MIN,
             "history_kw": b.history_series(),
         }

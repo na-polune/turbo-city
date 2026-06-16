@@ -25,9 +25,6 @@ SIM_MIN_PER_SEC = 1.0   # 1 real second = 1 sim minute → full day in 24 real m
 CAR_SPEED_MPS    = (6.0, 9.0)   # [min, max] cruising speed, m/s
 PERSON_SPEED_MPS = (1.1, 1.7)   # [min, max] walking speed, m/s
 
-# ---- energy model ----
-TILE_M2   = 25   # reference tile area for the load formula (5 × 5 m)
-PEAK_COEF = {'res': 5, 'office': 9, 'shop': 13}
 OCC = {
     'res':    [(0, 0.25), (5, 0.3),  (7, 0.55), (9, 0.35),  (12, 0.3),
                (16, 0.45), (19, 0.9), (22, 0.7),  (24, 0.25)],
@@ -36,6 +33,9 @@ OCC = {
     'shop':   [(0, 0.04), (8, 0.1),  (10, 0.65), (13, 0.8), (17, 0.85),
                (20, 0.5),  (21.5, 0.08), (24, 0.04)],
 }
+
+# ---- energy model (replaced by backend/energy.py) ----
+# TILE_M2 and PEAK_COEF removed; see energy.py for the CEA-inspired model.
 
 # ---- edit / spawn limits ----
 MAX_FLOORS      = 20
