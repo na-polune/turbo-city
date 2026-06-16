@@ -34,6 +34,17 @@ function shade(hex, f) {
   const c = hexToRgb(hex).map(v => clamp(Math.round(v * f), 0, 255));
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
+function lerpColor(hex1, hex2, t) {
+  const [r1, g1, b1] = hexToRgb(hex1), [r2, g2, b2] = hexToRgb(hex2);
+  return `rgb(${Math.round(lerp(r1,r2,t))},${Math.round(lerp(g1,g2,t))},${Math.round(lerp(b1,b2,t))})`;
+}
+function nightFactor(clockMin) {
+  const h = ((clockMin % 1440) + 1440) % 1440 / 60;
+  if (h >= 7 && h < 17)  return 0;           // full day
+  if (h >= 21 || h < 3)  return 1;           // full night
+  if (h < 7)             return 1 - (h - 3) / 4;   // dawn 3→7
+  return (h - 17) / 4;                       // dusk 17→21
+}
 const PALETTES = {
   res:    [['#c9a486', '#8a6e54'], ['#b8909a', '#7d5b64'], ['#a8b59a', '#6f7a62'], ['#d3b78f', '#94805f']],
   office: [['#8fa6bd', '#5c7390'], ['#9aa9b8', '#66788c'], ['#7e93ad', '#52647e'], ['#a3b6c9', '#6e8298']],
@@ -48,6 +59,8 @@ const cam = { x: 0, y: 0, zoom: 0.3 };
 const ZOOM_MIN = 0.12, ZOOM_MAX = 3.5;
 let world = null;
 let isoBounds = null;                   // {x0, y0, x1, y1} of all geometry, iso px
+let nightF = 0;                         // 0 = full day, 1 = full night
+let nightClockMin = 9 * 60;            // tracks current sim clock for day/night drawing
 
 function resize() {
   DPR = Math.min(2, window.devicePixelRatio || 1);
@@ -383,11 +396,22 @@ function drawWindows(b, w, x1, y1, x2, y2) {
   const cols = clamp(Math.floor(w.len / 3), 1, 9);
   const ex = x2 - x1, ey = y2 - y1;
   const winFill = ['rgba(40,60,90,0.85)', 'rgba(120,160,200,0.8)'];
+  // night: deterministic lit/dark per window, stable within each sim-hour bucket
+  const hour = ((nightClockMin % 1440) + 1440) % 1440 / 60;
+  const nightRng = mulberry32(b.id * 1234577 + w.i * 113 + Math.floor(hour) * 7919);
+  const litProb = nightF < 0.05 ? 0
+    : b.type === 'res'    ? (hour >= 18 ? 0.55 : hour < 6 ? 0.06 : 0.25)
+    : b.type === 'office' ? 0.04
+    : (hour >= 19 ? 0.0 : 0.35);
   for (let f = 0; f < b.floors; f++) {
     const wy = -(f * FLOOR_H) - FLOOR_H * 0.62 - 2;
     for (let c = 0; c < cols; c++) {
       const t0 = (c + 0.25) / cols, t1 = (c + 0.75) / cols;
-      ctx.fillStyle = winFill[Math.floor(wr() * 2)];
+      const dayChoice = Math.floor(wr() * 2);
+      const isLit = nightRng() < litProb;
+      ctx.fillStyle = nightF < 0.05 ? winFill[dayChoice]
+        : isLit ? `rgba(255,240,170,${lerp(0.7, 0.92, nightF)})`
+        : `rgba(18,22,35,0.9)`;
       ctx.beginPath();
       ctx.moveTo(x1 + ex * t0, y1 + ey * t0 + wy);
       ctx.lineTo(x1 + ex * t1, y1 + ey * t1 + wy);
@@ -460,9 +484,16 @@ function drawPerson(p) {
 }
 
 function drawLamp(d) {
+  if (nightF > 0) {
+    const glow = ctx.createRadialGradient(d.ix, d.iy - 24, 0, d.ix, d.iy - 24, 40);
+    glow.addColorStop(0, `rgba(255,220,100,${0.50 * nightF})`);
+    glow.addColorStop(1, 'rgba(255,180,50,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(d.ix, d.iy - 24, 40, 0, Math.PI * 2); ctx.fill();
+  }
   ctx.strokeStyle = '#3c4148'; ctx.lineWidth = 2; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(d.ix, d.iy); ctx.lineTo(d.ix, d.iy - 22); ctx.stroke();
-  ctx.fillStyle = '#c9ccd2';
+  ctx.fillStyle = nightF > 0.15 ? '#ffe89a' : '#c9ccd2';
   ctx.beginPath(); ctx.arc(d.ix, d.iy - 24, 2.6, 0, 7); ctx.fill();
 }
 const SIG_DUR = [9, 2.5, 9, 2.5];       // visual cycle only (v1: cars don't obey)
@@ -485,11 +516,22 @@ function render(nowMs) {
   requestAnimationFrame(render);
   if (!world) return;
   const nowSec = nowMs / 1000;
+  nightClockMin = curState ? curState.clock_min : 9 * 60;
+  nightF = nightFactor(nightClockMin);
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   const grad = ctx.createLinearGradient(0, 0, 0, Hh);
-  grad.addColorStop(0, '#8ec8f2'); grad.addColorStop(1, '#cfe9ff');
+  grad.addColorStop(0, lerpColor('#8ec8f2', '#0a1525', nightF));
+  grad.addColorStop(1, lerpColor('#cfe9ff', '#1a2e50', nightF));
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, Hh);
+  if (nightF > 0) {
+    const starRng = mulberry32(42);
+    ctx.fillStyle = `rgba(255,255,255,${nightF * 0.85})`;
+    for (let i = 0; i < 80; i++) {
+      const sx = starRng() * W, sy = starRng() * Hh * 0.55;
+      ctx.beginPath(); ctx.arc(sx, sy, starRng() * 0.9 + 0.4, 0, Math.PI * 2); ctx.fill();
+    }
+  }
 
   ctx.setTransform(DPR * cam.zoom, 0, 0, DPR * cam.zoom,
     DPR * (W / 2 - cam.x * cam.zoom), DPR * (Hh / 2 - cam.y * cam.zoom));
@@ -559,6 +601,11 @@ function render(nowMs) {
     else if (it.kind === 'signal') drawSignal(it.d, nowSec);
     else if (it.kind === 'car') drawCar(it.c);
     else drawPerson(it.p);
+  }
+  if (nightF > 0) {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.fillStyle = `rgba(5,15,40,${nightF * 0.55})`;
+    ctx.fillRect(0, 0, W, Hh);
   }
   updateHUD(s);
 }
