@@ -249,6 +249,7 @@ function frameState() {
   const out = {
     clock_min: lerp(prevState.clock_min, curState.clock_min, t),
     total_load_kw: curState.total_load_kw,
+    weather: curState.weather,
     cars: [], people: []
   };
   // match prev by id (spawn/remove edits can reorder the lists)
@@ -496,6 +497,22 @@ function drawLamp(d) {
   ctx.fillStyle = nightF > 0.15 ? '#ffe89a' : '#c9ccd2';
   ctx.beginPath(); ctx.arc(d.ix, d.iy - 24, 2.6, 0, 7); ctx.fill();
 }
+function drawRain(state, nowSec) {
+  const heavy = state === 'heavy_rain';
+  const drops = heavy ? 280 : 150;
+  const speed = heavy ? 500 : 350;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.strokeStyle = heavy ? 'rgba(174,214,241,0.55)' : 'rgba(174,214,241,0.38)';
+  ctx.lineWidth = heavy ? 1.5 : 1;
+  ctx.beginPath();
+  for (let i = 0; i < drops; i++) {
+    const x = (i * 137.508) % W;
+    const y = ((nowSec * speed + i * (Hh * 1.15 / drops)) % (Hh + 30)) - 15;
+    ctx.moveTo(x + 5, y - 10);
+    ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
 const SIG_DUR = [9, 2.5, 9, 2.5];       // visual cycle only (v1: cars don't obey)
 const SIG_CYCLE = SIG_DUR.reduce((a, b) => a + b);
 function drawSignal(d, nowSec) {
@@ -531,6 +548,11 @@ function render(nowMs) {
       const sx = starRng() * W, sy = starRng() * Hh * 0.55;
       ctx.beginPath(); ctx.arc(sx, sy, starRng() * 0.9 + 0.4, 0, Math.PI * 2); ctx.fill();
     }
+  }
+  const cWeather = curState && curState.weather;
+  if (cWeather && cWeather.cloud_cover > 0.1) {
+    ctx.fillStyle = `rgba(160,175,195,${cWeather.cloud_cover * 0.42})`;
+    ctx.fillRect(0, 0, W, Hh);
   }
 
   ctx.setTransform(DPR * cam.zoom, 0, 0, DPR * cam.zoom,
@@ -607,6 +629,9 @@ function render(nowMs) {
     ctx.fillStyle = `rgba(5,15,40,${nightF * 0.55})`;
     ctx.fillRect(0, 0, W, Hh);
   }
+  if (cWeather && (cWeather.state === 'rain' || cWeather.state === 'heavy_rain')) {
+    drawRain(cWeather.state, nowSec);
+  }
   updateHUD(s);
 }
 
@@ -620,6 +645,12 @@ function updateHUD(s) {
     String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
   const hour = m / 60;
   document.getElementById('clockGlyph').textContent = (hour >= 6.5 && hour < 18.5) ? '☀️' : '🌙';
+  if (s.weather) {
+    const wr = document.getElementById('weatherRow');
+    document.getElementById('weatherIcon').textContent = s.weather.icon;
+    document.getElementById('weatherLabel').textContent = s.weather.label;
+    wr.style.display = 'flex';
+  }
   document.getElementById('statCars').textContent = s.cars.length;
   document.getElementById('statPop').textContent = s.people.length;
   const kw = s.total_load_kw;

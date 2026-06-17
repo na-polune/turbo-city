@@ -10,6 +10,7 @@ import math
 import random
 
 from . import config, energy, geometry, grid_world, osm_world
+from .weather import Weather
 from .constants import (
     TICK_HZ, SIM_MIN_PER_SEC, SAMPLE_MIN, HISTORY_LEN,
     CAR_SPD_LEN, CAR_SPD_DT, STEPS_PER_M,
@@ -58,17 +59,18 @@ class Building:
     def occupancy(self, hour):
         return piecewise(OCC[self.type], hour)
 
-    def step_thermal(self, T_out, hour, sim_dt_s):
+    def step_thermal(self, T_out, hour, sim_dt_s, solar_mult=1.0, ua_mult=1.0):
         """Advance indoor temperature by sim_dt_s simulation-seconds (1C RC node)."""
         occ = self.occupancy(hour)
         self.T_in = energy.step_T_in(
-            self.T_in, T_out, self.area_m2, self.floors, self.type, occ, hour, sim_dt_s)
+            self.T_in, T_out, self.area_m2, self.floors, self.type, occ, hour, sim_dt_s,
+            solar_mult=solar_mult, ua_mult=ua_mult)
 
-    def estimate_load(self, hour):
+    def estimate_load(self, hour, ua_mult=1.0):
         """Compute load from current T_in and store component breakdown."""
         occ = self.occupancy(hour)
         load, h, e, l = energy.total_load_kw(
-            self.T_in, self.area_m2, self.floors, self.type, occ, hour)
+            self.T_in, self.area_m2, self.floors, self.type, occ, hour, ua_mult=ua_mult)
         self.hvac_kw = h
         self.elec_kw = e
         self.light_kw = l
@@ -95,8 +97,8 @@ class Building:
         self.elec_kw = el
         self.light_kw = li
 
-    def sample(self, hour):
-        self.load_kw = self.estimate_load(hour)
+    def sample(self, hour, ua_mult=1.0):
+        self.load_kw = self.estimate_load(hour, ua_mult)
         self.history[self.hist_idx] = self.load_kw
         self.hist_idx = (self.hist_idx + 1) % HISTORY_LEN
 
@@ -198,13 +200,13 @@ class Car(Walker):
         self.spd_idx = 0
         self.spd_count = 0
 
-    def move(self, dt):
+    def move(self, dt, weather_mult=1.0):
         # slower on narrow streets, ease off near the end of each edge
         width = self.edge_meta or 6
         cls_factor = max(0.5, min(1.2, width / 7))
         edge_room = min(self.t, self.edge_len - self.t)
         ease = max(0.45, min(1.0, (edge_room + 4) / 12))
-        self.speed = self.base_speed * cls_factor * ease
+        self.speed = self.base_speed * cls_factor * ease * weather_mult
         d = self.speed * dt
         self.advance(d)
         self.distance_m += d
@@ -242,8 +244,8 @@ class Person(Walker):
             self.steps[i] = self.speed * 600 * act   # meters per 10-min bucket
         self.steps[self.step_idx] = 0.0
 
-    def move(self, dt):
-        d = self.speed * dt
+    def move(self, dt, weather_mult=1.0):
+        d = self.speed * weather_mult * dt
         self.advance(d)
         self.distance_m += d
         self.steps[self.step_idx] += d
@@ -275,6 +277,7 @@ class Simulation:
         self.sim_min_per_sec = cfg.get("sim_min_per_sec", SIM_MIN_PER_SEC)
         self.tick_interval = 1.0 / cfg.get("tick_hz", TICK_HZ)   # seconds between ticks
         self.world_rev = 0    # bumped on every edit; clients refetch /api/world on change
+        self.weather = Weather(self.rng, cfg.get("weather_period_min", 180.0))
 
         spec = config.load_world_spec(self.mode)
         w = self.world_data = WORLD_BUILDERS[self.mode](spec, seed)
@@ -301,21 +304,24 @@ class Simulation:
         self.clock_min += dt * self.sim_min_per_sec
         hour = (self.clock_min % 1440) / 60.0
         sim_dt_s = dt * self.sim_min_per_sec * 60.0
-        T_out = energy.outdoor_temp_c(self.clock_min)
+        self.weather.tick(dt * self.sim_min_per_sec)
+        wp = self.weather.props
+        T_out = energy.outdoor_temp_c(self.clock_min) + wp['temp_offset']
+        weather_mult = 0.7 if self.weather.state in ('rain', 'heavy_rain') else 1.0
 
         for c in self.cars:
-            c.move(dt)
+            c.move(dt, weather_mult)
         for p in self.people:
-            p.move(dt)
+            p.move(dt, weather_mult)
         for b in self.buildings:
-            b.step_thermal(T_out, hour, sim_dt_s)
-        self.total_load_kw = sum(b.estimate_load(hour) for b in self.buildings)
+            b.step_thermal(T_out, hour, sim_dt_s, wp['solar_mult'], wp['ua_mult'])
+        self.total_load_kw = sum(b.estimate_load(hour, wp['ua_mult']) for b in self.buildings)
 
         while self.clock_min - self.last_sample_min >= SAMPLE_MIN:
             self.last_sample_min += SAMPLE_MIN
             h = (self.last_sample_min % 1440) / 60.0
             for b in self.buildings:
-                b.sample(h)
+                b.sample(h, wp['ua_mult'])
             for p in self.people:
                 p.rotate_bucket()
 
@@ -561,6 +567,7 @@ class Simulation:
             "clock_min": round(self.clock_min, 2),
             "sim_min_per_sec": self.sim_min_per_sec,
             "total_load_kw": round(self.total_load_kw),
+            "weather": self.weather.snapshot(),
             "cars": [{
                 "id": c.id, "name": c.name, "color": c.color,
                 "x": round(c.pos()[0], 2), "y": round(c.pos()[1], 2),
@@ -586,7 +593,7 @@ class Simulation:
             "elec_kw": round(b.elec_kw, 1),
             "light_kw": round(b.light_kw, 1),
             "t_in_c": round(b.T_in, 1),
-            "t_out_c": round(energy.outdoor_temp_c(self.clock_min), 1),
+            "t_out_c": round(energy.outdoor_temp_c(self.clock_min) + self.weather.props['temp_offset'], 1),
             "occupancy": round(b.occupancy(hour), 2),
             "sample_min": SAMPLE_MIN,
             "history_kw": b.history_series(),

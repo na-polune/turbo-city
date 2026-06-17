@@ -82,17 +82,18 @@ def envelope_UA(area_m2, floors, btype):
           + U_BASE        * area_m2 * B_F)
 
 
-def solar_gain_W(area_m2, floors, btype, hour):
+def solar_gain_W(area_m2, floors, btype, hour, solar_mult=1.0):
     """Simplified solar gain through windows [W].
 
     Uses an isotropic clear-sky irradiance profile and a mean façade exposure
     factor of 0.25 (average of four orientations at 45° incidence).
     Analogous to CEA's calc_I_sol() in sensible_loads.py.
+    solar_mult (0–1) scales for cloud cover from the weather model.
     """
     wall_gross = 4.0 * math.sqrt(area_m2) * floors * FLOOR_HEIGHT
     win_area   = wall_gross * WIN_WALL[btype]
     I_sol = max(0.0, math.sin(math.pi * (hour - 6) / 12)) * SOLAR_PEAK_W_M2
-    return win_area * G_WIN[btype] * I_sol * 0.25
+    return win_area * G_WIN[btype] * I_sol * 0.25 * solar_mult
 
 
 def internal_gain_W(area_m2, floors, btype, occ):
@@ -104,28 +105,31 @@ def internal_gain_W(area_m2, floors, btype, occ):
     return area_m2 * floors * E_DENSITY[btype] * occ * ELEC_TO_HEAT
 
 
-def step_T_in(T_in, T_out, area_m2, floors, btype, occ, hour, sim_dt_s):
+def step_T_in(T_in, T_out, area_m2, floors, btype, occ, hour, sim_dt_s,
+              solar_mult=1.0, ua_mult=1.0):
     """Advance indoor air temperature by sim_dt_s simulation-seconds.
 
     1C RC node: C·dT/dt = Q_gain - UA·(T_in - T_out)
     Euler integration; stable for sim_dt_s << Cm/UA (~20 h for heavy buildings).
     Mirrors the single-zone ISO 13790 / SIA 2044 5R1C model reduced to 1C.
+    solar_mult scales solar gain (clouds); ua_mult scales envelope loss (rain/wind).
     """
-    UA     = envelope_UA(area_m2, floors, btype)
+    UA     = envelope_UA(area_m2, floors, btype) * ua_mult
     Cm     = Cm_Af[btype] * area_m2
-    Q_gain = solar_gain_W(area_m2, floors, btype, hour) + internal_gain_W(area_m2, floors, btype, occ)
+    Q_gain = solar_gain_W(area_m2, floors, btype, hour, solar_mult) + internal_gain_W(area_m2, floors, btype, occ)
     Q_loss = UA * (T_in - T_out)
     return T_in + (Q_gain - Q_loss) / Cm * sim_dt_s
 
 
-def hvac_kw(T_in, area_m2, floors, btype):
+def hvac_kw(T_in, area_m2, floors, btype, ua_mult=1.0):
     """HVAC power [kW] to restore the comfort setpoint.
 
     Proportional to the UA-weighted temperature deviation from setpoint,
     divided by system COP — consistent with CEA's calc_Qhs_Qcs_sys_max() logic.
     Heating when T_in < T_HEAT, cooling when T_in > T_COOL, idle in between.
+    ua_mult scales envelope conductance (e.g. higher in rain/wind).
     """
-    UA = envelope_UA(area_m2, floors, btype)
+    UA = envelope_UA(area_m2, floors, btype) * ua_mult
     if T_in < T_HEAT[btype]:
         return UA * (T_HEAT[btype] - T_in) / (1000.0 * COP_HEAT)
     if T_in > T_COOL[btype]:
@@ -156,13 +160,13 @@ def lighting_kw(area_m2, floors, btype, occ, hour):
     return area_m2 * floors * LPD[btype] * occ * (1.0 - 0.8 * daylight) / 1000.0
 
 
-def total_load_kw(T_in, area_m2, floors, btype, occ, hour):
+def total_load_kw(T_in, area_m2, floors, btype, occ, hour, ua_mult=1.0):
     """Total building load [kW] and component breakdown.
 
     Returns (total, hvac, electrical, lighting). Minimum 0.5 kW so buildings
     never read zero on the dashboard.
     """
-    h = hvac_kw(T_in, area_m2, floors, btype)
+    h = hvac_kw(T_in, area_m2, floors, btype, ua_mult)
     e = electrical_kw(area_m2, floors, btype, occ)
     l = lighting_kw(area_m2, floors, btype, occ, hour)
     total = max(0.5, h + e + l)
