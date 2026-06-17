@@ -648,7 +648,8 @@ function updateHUD(s) {
   if (s.weather) {
     const wr = document.getElementById('weatherRow');
     document.getElementById('weatherIcon').textContent = s.weather.icon;
-    document.getElementById('weatherLabel').textContent = s.weather.label;
+    const tag = s.weather.source === 'api' ? ' 🌐' : '';
+    document.getElementById('weatherLabel').textContent = s.weather.label + tag;
     wr.style.display = 'flex';
   }
   document.getElementById('statCars').textContent = s.cars.length;
