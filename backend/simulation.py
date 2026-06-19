@@ -285,12 +285,12 @@ class Simulation:
         self.sim_min_per_sec = cfg.get("sim_min_per_sec", SIM_MIN_PER_SEC)
         self.tick_interval = 1.0 / cfg.get("tick_hz", TICK_HZ)   # seconds between ticks
         self.world_rev = 0    # bumped on every edit; clients refetch /api/world on change
+        spec = config.load_world_spec(self.mode)
         lat, lon = None, None
         if self.mode == 'map' and 'center' in spec:
             lat, lon = spec['center'][0], spec['center'][1]
         self.weather = Weather(self.rng, cfg.get("weather_period_min", 180.0), lat=lat, lon=lon)
 
-        spec = config.load_world_spec(self.mode)
         w = self.world_data = WORLD_BUILDERS[self.mode](spec, seed)
         self._car_speed = tuple(w.get("car_speed_mps") or CAR_SPEED_MPS)
         self._person_speed = tuple(w.get("person_speed_mps") or PERSON_SPEED_MPS)
