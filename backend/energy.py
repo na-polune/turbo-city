@@ -17,37 +17,40 @@ B_F = 0.7            # ground-floor transmittance reduction factor (SIA 380/1)
 
 # ---- envelope U-values [W/m²K] per building type ----
 # Sourced from CEA envelope database (typical European building stock)
-U_WALL = {'res': 0.5,  'office': 0.4,  'shop': 0.6}
-U_ROOF = {'res': 0.3,  'office': 0.25, 'shop': 0.35}
-U_WIN  = {'res': 2.0,  'office': 1.8,  'shop': 2.5}
+# hospital/school: modern insulation; industrial: poorly insulated shed
+U_WALL = {'res': 0.5,  'office': 0.4,  'shop': 0.6,  'hospital': 0.4,  'school': 0.45, 'industrial': 0.7}
+U_ROOF = {'res': 0.3,  'office': 0.25, 'shop': 0.35, 'hospital': 0.25, 'school': 0.28, 'industrial': 0.45}
+U_WIN  = {'res': 2.0,  'office': 1.8,  'shop': 2.5,  'hospital': 1.8,  'school': 2.0,  'industrial': 2.8}
 U_BASE = 0.5          # ground slab [W/m²K]
 
 # ---- window-to-wall ratio [-] ----
-WIN_WALL = {'res': 0.25, 'office': 0.40, 'shop': 0.35}
+WIN_WALL = {'res': 0.25, 'office': 0.40, 'shop': 0.35, 'hospital': 0.30, 'school': 0.30, 'industrial': 0.15}
 
 # ---- solar heat gain coefficient of glazing [-] (G_win in CEA) ----
-G_WIN = {'res': 0.55, 'office': 0.50, 'shop': 0.60}
+G_WIN = {'res': 0.55, 'office': 0.50, 'shop': 0.60, 'hospital': 0.50, 'school': 0.55, 'industrial': 0.55}
 
 # ---- peak clear-sky solar irradiance [W/m²] (simplified, isotropic) ----
 SOLAR_PEAK_W_M2 = 500.0
 
 # ---- thermal mass [J/K per m² of footprint area] (Cm_Af in CEA) ----
 # Heavy concrete construction: ~165 000; light construction: ~80 000
-Cm_Af = {'res': 165_000, 'office': 165_000, 'shop': 100_000}
+Cm_Af = {'res': 165_000, 'office': 165_000, 'shop': 100_000, 'hospital': 165_000, 'school': 165_000, 'industrial': 80_000}
 
 # ---- HVAC comfort setpoints [°C] per building type ----
-T_HEAT = {'res': 20.0, 'office': 21.0, 'shop': 19.0}
-T_COOL = {'res': 26.0, 'office': 24.0, 'shop': 25.0}
+# CEA USE_TYPES.csv: hospital Ths=22/Tcs=26, school Ths=21/Tcs=26, industrial Ths=18/Tcs=30
+T_HEAT = {'res': 20.0, 'office': 21.0, 'shop': 19.0, 'hospital': 22.0, 'school': 21.0, 'industrial': 18.0}
+T_COOL = {'res': 26.0, 'office': 24.0, 'shop': 25.0, 'hospital': 26.0, 'school': 26.0, 'industrial': 30.0}
 
 # ---- system COP (coefficient of performance) ----
 COP_HEAT = 3.0   # heat pump heating
 COP_COOL = 3.0   # chiller cooling
 
 # ---- appliance power density [W/m² of total floor area] (Ea_Wm2 in CEA) ----
-E_DENSITY = {'res': 4.0, 'office': 12.0, 'shop': 8.0}
+# industrial includes process loads (Ea + Epro from CEA)
+E_DENSITY = {'res': 4.0, 'office': 12.0, 'shop': 8.0, 'hospital': 13.0, 'school': 4.0, 'industrial': 26.5}
 
 # ---- lighting power density [W/m² of total floor area] (El_Wm2 in CEA) ----
-LPD = {'res': 6.0, 'office': 12.0, 'shop': 20.0}
+LPD = {'res': 6.0, 'office': 12.0, 'shop': 20.0, 'hospital': 11.0, 'school': 14.0, 'industrial': 10.8}
 
 # ---- fraction of electrical load that becomes internal heat gain ----
 ELEC_TO_HEAT = 0.9
@@ -56,7 +59,29 @@ ELEC_TO_HEAT = 0.9
 T_AVG_C = 12.0   # annual mean [°C]
 T_AMP_C =  6.0   # daily amplitude [°C]
 
-BUILDING_TYPES = tuple(U_WALL)   # valid type strings: 'office', 'res', 'shop'
+BUILDING_TYPES = tuple(U_WALL)
+
+# ---- rooftop PV model (inspired by CEA pv.py) ----
+PV_EFFICIENCY    = 0.18   # monocrystalline panel efficiency [-]
+PV_ROOF_FRACTION = 0.40   # usable roof area fraction (excludes obstacles, shading)
+
+# ---- CO₂ emission factor for grid electricity [kg CO₂/kWh] ----
+# UK National Grid 2024 average (source: DESNZ / CEA energy_carriers.py)
+CO2_GRID_KG_KWH = 0.233
+
+
+def pv_gen_kw(area_m2: float, solar_mult: float = 1.0) -> float:
+    """Rooftop PV generation [kW].
+
+    Flat roof approximation: usable area × panel efficiency × peak irradiance × cloud factor.
+    Equivalent to CEA's PhotovoltaicPanel.calc_PV_power() simplified to a scalar.
+    """
+    return area_m2 * PV_ROOF_FRACTION * PV_EFFICIENCY * SOLAR_PEAK_W_M2 * solar_mult / 1000.0
+
+
+def co2_kg_h(load_kw: float) -> float:
+    """Operational CO₂ emissions [kg/h] from grid electricity consumption."""
+    return load_kw * CO2_GRID_KG_KWH
 
 
 def outdoor_temp_c(clock_min):
@@ -82,18 +107,66 @@ def envelope_UA(area_m2, floors, btype):
           + U_BASE        * area_m2 * B_F)
 
 
-def solar_gain_W(area_m2, floors, btype, hour, solar_mult=1.0):
-    """Simplified solar gain through windows [W].
+def facade_orientation_factor(polygon):
+    """Compute a solar exposure factor [0–1] for a building polygon at a given hour.
 
-    Uses an isotropic clear-sky irradiance profile and a mean façade exposure
-    factor of 0.25 (average of four orientations at 45° incidence).
+    Returns a callable f(hour) -> float that gives the weighted fraction of
+    solar irradiance received by the building's façades at that hour.
+
+    Method (after CEA calc_I_sol):
+    - For each wall edge, compute the outward normal angle (east=0, north=90°).
+    - At solar noon the sun is due south (azimuth=180°), at 6 am due east (90°).
+    - Each face receives cos(angle_face_to_sun) irradiance, clamped to ≥0.
+    - Weight by wall length; normalise so an isotropic building gives 0.25.
+    """
+    n = len(polygon)
+    if n < 3:
+        return lambda _: 0.25
+
+    # Wall normals: outward normal angle in degrees from east (CCW)
+    normals = []    # (normal_deg, length)
+    for i in range(n):
+        ax, ay = polygon[i]
+        bx, by = polygon[(i + 1) % n]
+        ex, ey = bx - ax, by - ay
+        length = math.hypot(ex, ey)
+        if length < 0.1:
+            continue
+        # outward normal rotated 90° clockwise from edge direction (x-east, y-south coords)
+        nx, ny = ey, -ex
+        normal_deg = math.degrees(math.atan2(-nx, ny)) % 360  # 0=north, 90=east, 180=south
+        normals.append((normal_deg, length))
+
+    if not normals:
+        return lambda _: 0.25
+
+    total_len = sum(L for _, L in normals)
+
+    def _factor(hour):
+        # Solar azimuth: 90° (east) at 6 am, 180° (south) at noon, 270° (west) at 18
+        solar_az = 90.0 + (hour - 6.0) * 10.0    # 15°/hour from east
+        gain = 0.0
+        for nd, L in normals:
+            diff = math.radians(nd - solar_az)
+            gain += max(0.0, math.cos(diff)) * L
+        # Normalise: a square building with uniform orientation gives total_len/4 on average
+        return gain / total_len if total_len > 0 else 0.25
+
+    return _factor
+
+
+def solar_gain_W(area_m2, floors, btype, hour, solar_mult=1.0, orientation_factor=0.25):
+    """Solar gain through windows [W].
+
+    orientation_factor: per-face weighted exposure fraction (0–1).
+    Default 0.25 (isotropic) is used when no polygon is available.
     Analogous to CEA's calc_I_sol() in sensible_loads.py.
     solar_mult (0–1) scales for cloud cover from the weather model.
     """
     wall_gross = 4.0 * math.sqrt(area_m2) * floors * FLOOR_HEIGHT
     win_area   = wall_gross * WIN_WALL[btype]
     I_sol = max(0.0, math.sin(math.pi * (hour - 6) / 12)) * SOLAR_PEAK_W_M2
-    return win_area * G_WIN[btype] * I_sol * 0.25 * solar_mult
+    return win_area * G_WIN[btype] * I_sol * orientation_factor * solar_mult
 
 
 def internal_gain_W(area_m2, floors, btype, occ):
@@ -106,7 +179,7 @@ def internal_gain_W(area_m2, floors, btype, occ):
 
 
 def step_T_in(T_in, T_out, area_m2, floors, btype, occ, hour, sim_dt_s,
-              solar_mult=1.0, ua_mult=1.0):
+              solar_mult=1.0, ua_mult=1.0, orientation_factor=0.25):
     """Advance indoor air temperature by sim_dt_s simulation-seconds.
 
     1C RC node: C·dT/dt = Q_gain - UA·(T_in - T_out)
@@ -116,7 +189,7 @@ def step_T_in(T_in, T_out, area_m2, floors, btype, occ, hour, sim_dt_s,
     """
     UA     = envelope_UA(area_m2, floors, btype) * ua_mult
     Cm     = Cm_Af[btype] * area_m2
-    Q_gain = solar_gain_W(area_m2, floors, btype, hour, solar_mult) + internal_gain_W(area_m2, floors, btype, occ)
+    Q_gain = solar_gain_W(area_m2, floors, btype, hour, solar_mult, orientation_factor) + internal_gain_W(area_m2, floors, btype, occ)
     Q_loss = UA * (T_in - T_out)
     return T_in + (Q_gain - Q_loss) / Cm * sim_dt_s
 

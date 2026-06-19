@@ -26,12 +26,21 @@ CAR_SPEED_MPS    = (6.0, 9.0)   # [min, max] cruising speed, m/s
 PERSON_SPEED_MPS = (1.1, 1.7)   # [min, max] walking speed, m/s
 
 OCC = {
-    'res':    [(0, 0.25), (5, 0.3),  (7, 0.55), (9, 0.35),  (12, 0.3),
-               (16, 0.45), (19, 0.9), (22, 0.7),  (24, 0.25)],
-    'office': [(0, 0.06), (6, 0.08), (8, 0.7),  (12, 0.85), (14, 0.8),
-               (17, 0.7),  (19, 0.25), (22, 0.08), (24, 0.06)],
-    'shop':   [(0, 0.04), (8, 0.1),  (10, 0.65), (13, 0.8), (17, 0.85),
-               (20, 0.5),  (21.5, 0.08), (24, 0.04)],
+    'res':      [(0, 0.25), (5, 0.3),  (7, 0.55), (9, 0.35),  (12, 0.3),
+                 (16, 0.45), (19, 0.9), (22, 0.7),  (24, 0.25)],
+    'office':   [(0, 0.06), (6, 0.08), (8, 0.7),  (12, 0.85), (14, 0.8),
+                 (17, 0.7),  (19, 0.25), (22, 0.08), (24, 0.06)],
+    'shop':     [(0, 0.04), (8, 0.1),  (10, 0.65), (13, 0.8), (17, 0.85),
+                 (20, 0.5),  (21.5, 0.08), (24, 0.04)],
+    # CEA HOSPITAL schedule: 24/7 baseline ~0.43, peaks 9–10 and 14–15 at 1.0
+    'hospital': [(0, 0.43), (7, 0.55), (9, 1.0), (12, 0.66), (14, 1.0),
+                 (17, 0.55), (18, 0.43), (24, 0.43)],
+    # CEA SCHOOL schedule: empty at night, 7–17 school day
+    'school':   [(0, 0.0), (7, 0.4), (8, 0.6), (9, 1.0), (11, 0.8),
+                 (12, 0.2), (13, 0.6), (15, 0.8), (17, 0.4), (18, 0.0), (24, 0.0)],
+    # CEA INDUSTRIAL schedule: low overnight (0.2), shift 6–18 at high load
+    'industrial': [(0, 0.2), (5, 0.5), (6, 0.8), (7, 1.0), (11, 0.5),
+                   (12, 0.8), (14, 1.0), (18, 0.5), (22, 0.2), (24, 0.2)],
 }
 
 # ---- energy model (replaced by backend/energy.py) ----
@@ -43,7 +52,7 @@ MAX_CARS        = 50
 MAX_PEOPLE      = 100
 MAX_BUILDINGS   = 500
 MIN_BUILDING_M2 = 25
-DEFAULT_FLOORS  = {'res': 3, 'office': 4, 'shop': 2}
+DEFAULT_FLOORS  = {'res': 3, 'office': 4, 'shop': 2, 'hospital': 4, 'school': 2, 'industrial': 1}
 
 # ---- agent flavor ----
 CAR_NAMES  = ['Sedan', 'Hatchback', 'Coupe', 'Van', 'Pickup', 'Mini', 'Wagon', 'Taxi']

@@ -133,17 +133,23 @@
   <div class="stat"><span>Vehicles</span><b id="statCars">–</b></div>
   <div class="stat"><span>People</span><b id="statPop">–</b></div>
   <div class="stat"><span>Grid load</span><b id="statLoad">–</b></div>
+  <div class="stat"><span>CO₂</span><b id="statCO2">–</b></div>
+  <div class="stat"><span>Solar PV</span><b id="statPV">–</b></div>
   <div class="tools" id="toolbar">
     <button data-tool="car" title="Arm, then click a road to add a car (Esc to cancel)">+ 🚗 Car</button>
     <button data-tool="person" title="Arm, then click a road to add a person (Esc to cancel)">+ 🚶 Person</button>
     <button data-tool="road" title="Arm, then drag on the map to lay a road (snaps to a 10 m grid)">+ 🛣 Road</button>
     <button data-tool="bldg" title="Pick a type below, then drag a footprint on the map">+ 🏢 Bldg</button>
     <button data-tool="dozer" title="Arm, then click a building or road to bulldoze it">🧨 Doze</button>
+    <button id="euiToggle" title="Toggle EUI heat-map: green=efficient, red=high energy">🌡 EUI</button>
   </div>
   <div class="tools" id="bldgTypes" style="display:none">
     <button data-btype="res" class="active">🏠 Res</button>
     <button data-btype="office">🏢 Office</button>
     <button data-btype="shop">🛍 Shop</button>
+    <button data-btype="hospital">🏥 Hospital</button>
+    <button data-btype="school">🏫 School</button>
+    <button data-btype="industrial">🏭 Industrial</button>
   </div>
   <div class="backend" id="backendBadge"><span class="dot"></span><span id="backendText">connecting…</span></div>
   <div id="timeControls">

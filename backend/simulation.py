@@ -46,10 +46,13 @@ class Building:
         self.area_m2 = data["area_m2"]
         self.center = data["center"]
         self.T_in = 0.5 * (energy.T_HEAT[self.type] + energy.T_COOL[self.type])
+        self._ori_factor = energy.facade_orientation_factor(data.get("polygon", []))
         self.load_kw = 0.0
         self.hvac_kw = 0.0
         self.elec_kw = 0.0
         self.light_kw = 0.0
+        self.co2_kg_h = 0.0
+        self.pv_kw = 0.0
         self.history = [0.0] * HISTORY_LEN
         self.hist_idx = 0
 
@@ -64,9 +67,10 @@ class Building:
         occ = self.occupancy(hour)
         self.T_in = energy.step_T_in(
             self.T_in, T_out, self.area_m2, self.floors, self.type, occ, hour, sim_dt_s,
-            solar_mult=solar_mult, ua_mult=ua_mult)
+            solar_mult=solar_mult, ua_mult=ua_mult,
+            orientation_factor=self._ori_factor(hour))
 
-    def estimate_load(self, hour, ua_mult=1.0):
+    def estimate_load(self, hour, ua_mult=1.0, solar_mult=1.0):
         """Compute load from current T_in and store component breakdown."""
         occ = self.occupancy(hour)
         load, h, e, l = energy.total_load_kw(
@@ -74,6 +78,9 @@ class Building:
         self.hvac_kw = h
         self.elec_kw = e
         self.light_kw = l
+        self.co2_kg_h = energy.co2_kg_h(load)
+        day_factor = max(0.0, math.sin(math.pi * (hour - 6) / 12)) if 6 <= hour <= 18 else 0.0
+        self.pv_kw = energy.pv_gen_kw(self.area_m2, solar_mult * day_factor)
         return load
 
     def prefill(self, now_min):
@@ -86,7 +93,8 @@ class Building:
             T_out = energy.outdoor_temp_c(m)
             occ = self.occupancy(h)
             T_in = energy.step_T_in(
-                T_in, T_out, self.area_m2, self.floors, self.type, occ, h, SAMPLE_MIN * 60)
+                T_in, T_out, self.area_m2, self.floors, self.type, occ, h, SAMPLE_MIN * 60,
+                orientation_factor=self._ori_factor(h))
             load, hv, el, li = energy.total_load_kw(
                 T_in, self.area_m2, self.floors, self.type, occ, h)
             self.history[i] = load
@@ -97,8 +105,8 @@ class Building:
         self.elec_kw = el
         self.light_kw = li
 
-    def sample(self, hour, ua_mult=1.0):
-        self.load_kw = self.estimate_load(hour, ua_mult)
+    def sample(self, hour, ua_mult=1.0, solar_mult=1.0):
+        self.load_kw = self.estimate_load(hour, ua_mult, solar_mult)
         self.history[self.hist_idx] = self.load_kw
         self.hist_idx = (self.hist_idx + 1) % HISTORY_LEN
 
@@ -309,7 +317,7 @@ class Simulation:
         sim_dt_s = dt * self.sim_min_per_sec * 60.0
         self.weather.tick(dt * self.sim_min_per_sec)
         wp = self.weather.props
-        T_out = energy.outdoor_temp_c(self.clock_min) + wp['temp_offset']
+        T_out = self._current_t_out()
         weather_mult = 0.7 if self.weather.state in ('rain', 'heavy_rain') else 1.0
 
         for c in self.cars:
@@ -318,13 +326,13 @@ class Simulation:
             p.move(dt, weather_mult)
         for b in self.buildings:
             b.step_thermal(T_out, hour, sim_dt_s, wp['solar_mult'], wp['ua_mult'])
-        self.total_load_kw = sum(b.estimate_load(hour, wp['ua_mult']) for b in self.buildings)
+        self.total_load_kw = sum(b.estimate_load(hour, wp['ua_mult'], wp['solar_mult']) for b in self.buildings)
 
         while self.clock_min - self.last_sample_min >= SAMPLE_MIN:
             self.last_sample_min += SAMPLE_MIN
             h = (self.last_sample_min % 1440) / 60.0
             for b in self.buildings:
-                b.sample(h, wp['ua_mult'])
+                b.sample(h, wp['ua_mult'], wp['solar_mult'])
             for p in self.people:
                 p.rotate_bucket()
 
@@ -544,6 +552,13 @@ class Simulation:
         "seek_time": _edit_seek_time,
     }
 
+    # ---------- helpers ----------
+    def _current_t_out(self):
+        snap = self.weather.snapshot()
+        if snap['temp_c'] is not None:
+            return snap['temp_c']
+        return energy.outdoor_temp_c(self.clock_min) + self.weather.props['temp_offset']
+
     # ---------- API snapshots ----------
     def world(self):
         """Static layout for the frontend (graphs stay server-side)."""
@@ -565,11 +580,17 @@ class Simulation:
         }
 
     def state(self):
+        # EUI [W/m² total floor area] per building, normalised 0–1 city-wide
+        euis = [b.load_kw * 1000 / max(1, b.area_m2 * b.floors) for b in self.buildings]
+        eui_min = min(euis) if euis else 0.0
+        eui_max = max(euis) if euis else 1.0
+        eui_range = max(1.0, eui_max - eui_min)
         return {
             "world_rev": self.world_rev,
             "clock_min": round(self.clock_min, 2),
             "sim_min_per_sec": self.sim_min_per_sec,
             "total_load_kw": round(self.total_load_kw),
+            "total_co2_kg_h": round(sum(b.co2_kg_h for b in self.buildings), 1),
             "weather": self.weather.snapshot(),
             "cars": [{
                 "id": c.id, "name": c.name, "color": c.color,
@@ -581,6 +602,13 @@ class Simulation:
                 "id": p.id, "name": p.name, "shirt": p.shirt,
                 "x": round(p.pos()[0], 2), "y": round(p.pos()[1], 2),
             } for p in self.people],
+            "total_pv_kw": round(sum(b.pv_kw for b in self.buildings), 1),
+            "buildings_eui": [{
+                "id": b.id,
+                "eui_norm": round((euis[i] - eui_min) / eui_range, 3),
+                "eui_w_m2": round(euis[i], 1),
+                "pv_kw": round(b.pv_kw, 1),
+            } for i, b in enumerate(self.buildings)],
         }
 
     def building_detail(self, i):
@@ -595,8 +623,10 @@ class Simulation:
             "hvac_kw": round(b.hvac_kw, 1),
             "elec_kw": round(b.elec_kw, 1),
             "light_kw": round(b.light_kw, 1),
+            "co2_kg_h": round(b.co2_kg_h, 2),
+            "pv_kw": round(b.pv_kw, 1),
             "t_in_c": round(b.T_in, 1),
-            "t_out_c": round(energy.outdoor_temp_c(self.clock_min) + self.weather.props['temp_offset'], 1),
+            "t_out_c": round(self._current_t_out(), 1),
             "occupancy": round(b.occupancy(hour), 2),
             "sample_min": SAMPLE_MIN,
             "history_kw": b.history_series(),

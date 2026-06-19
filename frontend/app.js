@@ -38,6 +38,11 @@ function lerpColor(hex1, hex2, t) {
   const [r1, g1, b1] = hexToRgb(hex1), [r2, g2, b2] = hexToRgb(hex2);
   return `rgb(${Math.round(lerp(r1,r2,t))},${Math.round(lerp(g1,g2,t))},${Math.round(lerp(b1,b2,t))})`;
 }
+function euiColor(norm) {
+  // green (efficient) → yellow → red (high-energy), with 60% opacity
+  if (norm < 0.5) return lerpColor('#22c55e', '#facc15', norm * 2);
+  return lerpColor('#facc15', '#ef4444', (norm - 0.5) * 2);
+}
 function nightFactor(clockMin) {
   const h = ((clockMin % 1440) + 1440) % 1440 / 60;
   if (h >= 7 && h < 17)  return 0;           // full day
@@ -46,9 +51,12 @@ function nightFactor(clockMin) {
   return (h - 17) / 4;                       // dusk 17→21
 }
 const PALETTES = {
-  res:    [['#c9a486', '#8a6e54'], ['#b8909a', '#7d5b64'], ['#a8b59a', '#6f7a62'], ['#d3b78f', '#94805f']],
-  office: [['#8fa6bd', '#5c7390'], ['#9aa9b8', '#66788c'], ['#7e93ad', '#52647e'], ['#a3b6c9', '#6e8298']],
-  shop:   [['#e0a35c', '#a8743a'], ['#d98b7a', '#a05c4e'], ['#86bda0', '#578a6e'], ['#c9a0c4', '#8f6a8b']]
+  res:        [['#c9a486', '#8a6e54'], ['#b8909a', '#7d5b64'], ['#a8b59a', '#6f7a62'], ['#d3b78f', '#94805f']],
+  office:     [['#8fa6bd', '#5c7390'], ['#9aa9b8', '#66788c'], ['#7e93ad', '#52647e'], ['#a3b6c9', '#6e8298']],
+  shop:       [['#e0a35c', '#a8743a'], ['#d98b7a', '#a05c4e'], ['#86bda0', '#578a6e'], ['#c9a0c4', '#8f6a8b']],
+  hospital:   [['#e8e0f0', '#b0a0c8'], ['#dce8f5', '#8aafc8'], ['#f0e8e8', '#c8a0a0']],
+  school:     [['#f5d090', '#c8a040'], ['#e8c878', '#b89830'], ['#f0e0a0', '#c0a850']],
+  industrial: [['#b0b0b0', '#787878'], ['#a8a098', '#706860'], ['#c0b8a8', '#888070']],
 };
 
 /* ---------------- canvas / camera ---------------- */
@@ -190,6 +198,8 @@ canvas.addEventListener('wheel', e => {
 /* ---------------- backend state ---------------- */
 let prevState = null, curState = null;
 let backendLive = false;
+let euiMap = {};        // building id → {eui_norm, eui_w_m2}
+let euiOverlay = false; // toggle: show EUI heat-map on rooftops
 
 function applyWorldStatics() {
   prepareWorld();
@@ -223,6 +233,10 @@ async function pollState() {
     s.recvT = performance.now();
     prevState = curState || s;
     curState = s;
+    if (s.buildings_eui) {
+      euiMap = {};
+      for (const e of s.buildings_eui) euiMap[e.id] = e;
+    }
     setBackend(true);
     if (world && s.world_rev !== world.world_rev) refreshWorld();
   } catch {
@@ -386,11 +400,28 @@ function drawBuilding(b, withWindows) {
   ctx.beginPath();
   b.iso.forEach(([x, y], i) => i ? ctx.lineTo(x, y - lift) : ctx.moveTo(x, y - lift));
   ctx.closePath();
-  ctx.fillStyle = shade(b.palette[1], 1.18);
-  ctx.fill();
+  if (euiOverlay && euiMap[b.id] != null) {
+    ctx.fillStyle = euiColor(euiMap[b.id].eui_norm);
+    ctx.globalAlpha = 0.85;
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+  } else {
+    ctx.fillStyle = shade(b.palette[1], 1.18);
+    ctx.fill();
+  }
   ctx.strokeStyle = 'rgba(0,0,0,0.25)';
   ctx.lineWidth = 1;
   ctx.stroke();
+
+  // PV glow: gold tint on roof when building is generating significant solar
+  const eui = euiMap[b.id];
+  if (eui && eui.pv_kw > 0.5) {
+    ctx.beginPath();
+    b.iso.forEach(([x, y], i) => i ? ctx.lineTo(x, y - lift) : ctx.moveTo(x, y - lift));
+    ctx.closePath();
+    ctx.fillStyle = `rgba(253,224,71,${Math.min(0.55, eui.pv_kw / 20)})`;
+    ctx.fill();
+  }
 }
 function drawWindows(b, w, x1, y1, x2, y2) {
   const wr = mulberry32(b.id * 2654435761 + w.i * 97);
@@ -401,8 +432,11 @@ function drawWindows(b, w, x1, y1, x2, y2) {
   const hour = ((nightClockMin % 1440) + 1440) % 1440 / 60;
   const nightRng = mulberry32(b.id * 1234577 + w.i * 113 + Math.floor(hour) * 7919);
   const litProb = nightF < 0.05 ? 0
-    : b.type === 'res'    ? (hour >= 18 ? 0.55 : hour < 6 ? 0.06 : 0.25)
-    : b.type === 'office' ? 0.04
+    : b.type === 'res'        ? (hour >= 18 ? 0.55 : hour < 6 ? 0.06 : 0.25)
+    : b.type === 'office'     ? 0.04
+    : b.type === 'hospital'   ? 0.55   // 24/7 lit
+    : b.type === 'school'     ? (hour >= 7 && hour < 18 ? 0.6 : 0.0)
+    : b.type === 'industrial' ? (hour >= 6 && hour < 22 ? 0.4 : 0.1)
     : (hour >= 19 ? 0.0 : 0.35);
   for (let f = 0; f < b.floors; f++) {
     const wy = -(f * FLOOR_H) - FLOOR_H * 0.62 - 2;
@@ -657,6 +691,12 @@ function updateHUD(s) {
   const kw = s.total_load_kw;
   document.getElementById('statLoad').textContent =
     kw >= 1000 ? (kw / 1000).toFixed(1) + ' MW' : kw + ' kW';
+  const co2 = s.total_co2_kg_h;
+  document.getElementById('statCO2').textContent =
+    co2 >= 1000 ? (co2 / 1000).toFixed(1) + ' t/h' : co2.toFixed(1) + ' kg/h';
+  const pv = s.total_pv_kw || 0;
+  document.getElementById('statPV').textContent =
+    pv >= 1000 ? (pv / 1000).toFixed(1) + ' MW' : pv.toFixed(1) + ' kW';
   // sync time controls
   if (!sliderDragging) {
     timeSlider.value = m;
@@ -777,8 +817,12 @@ function setTool(t) {
   document.getElementById('bldgTypes').style.display = tool === 'bldg' ? 'flex' : 'none';
   canvas.classList.toggle('placing', !!tool);
 }
-document.querySelectorAll('#toolbar button').forEach(b =>
+document.querySelectorAll('#toolbar button[data-tool]').forEach(b =>
   b.addEventListener('click', () => setTool(b.dataset.tool)));
+document.getElementById('euiToggle').addEventListener('click', () => {
+  euiOverlay = !euiOverlay;
+  document.getElementById('euiToggle').classList.toggle('active', euiOverlay);
+});
 document.querySelectorAll('#bldgTypes button').forEach(b =>
   b.addEventListener('click', () => {
     bldgType = b.dataset.btype;
@@ -845,7 +889,7 @@ document.getElementById('entityRemove').addEventListener('click', () => {
   closePopup();
 });
 
-const TYPE_LABEL = { res: 'Residential', office: 'Office', shop: 'Shop' };
+const TYPE_LABEL = { res: 'Residential', office: 'Office', shop: 'Shop', hospital: 'Hospital', school: 'School', industrial: 'Industrial' };
 async function refreshDetail() {
   if (!openKind) return;
   let d;
@@ -870,7 +914,8 @@ async function refreshDetail() {
       yStep: 50, color: '#ffc94d', fill: 'rgba(255,201,77,0.16)',
       xTicks: timeTicks((d.history_kw.length - 1) * d.sample_min, 6)
     });
-    nowEl.innerHTML = `Now: <b>${Math.round(d.load_kw)}</b> kW · occupancy ${Math.round(d.occupancy * 100)}%`;
+    const pvStr = d.pv_kw > 0.1 ? ` · ☀️ PV ${d.pv_kw.toFixed(1)} kW` : '';
+    nowEl.innerHTML = `Now: <b>${Math.round(d.load_kw)}</b> kW${pvStr} · ${d.co2_kg_h.toFixed(1)} kg CO₂/h · T<sub>in</sub> ${d.t_in_c}°C / T<sub>out</sub> ${d.t_out_c}°C · occ ${Math.round(d.occupancy * 100)}%`;
   } else if (openKind === 'car') {
     sub.textContent = 'Vehicle telemetry — speed, last 60 s';
     renderChart(d.history_kmh, {

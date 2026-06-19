@@ -34,7 +34,7 @@ _EDGES = {
 _OPEN_METEO_URL = (
     'https://api.open-meteo.com/v1/forecast'
     '?latitude={lat}&longitude={lon}'
-    '&current=weather_code,cloud_cover,precipitation,wind_speed_10m'
+    '&current=weather_code,cloud_cover,precipitation,wind_speed_10m,temperature_2m'
     '&forecast_days=1'
 )
 _REFRESH_INTERVAL_S = 900   # re-fetch real weather every 15 real minutes
@@ -78,10 +78,13 @@ class Weather:
         self._fetching = False
         self._next_refresh = 0.0   # monotonic seconds; 0 forces immediate first refresh
 
+        self._real_temp_c: float | None = None  # None until first successful API fetch
+
         if self._real:
             # Blocking fetch at startup — acceptable; server isn't serving yet
             fetched = self._fetch()
-            self.state = fetched if fetched else 'partly_cloudy'
+            self.state = fetched[0] if fetched else 'partly_cloudy'
+            self._real_temp_c = fetched[1] if fetched else None
             self._next_refresh = time.monotonic() + _REFRESH_INTERVAL_S
             self._source = 'api'
         else:
@@ -112,6 +115,7 @@ class Weather:
             'temp_offset': p['temp_offset'],
             'ua_mult':     p['ua_mult'],
             'source':      self._source,
+            'temp_c':      self._real_temp_c,  # None in Markov mode; simulation.py falls back to synthetic
         }
 
     # ---- internal -------------------------------------------------------
@@ -136,22 +140,24 @@ class Weather:
         try:
             result = self._fetch()
             if result:
-                self.state = result
+                self.state, self._real_temp_c = result
             self._next_refresh = time.monotonic() + _REFRESH_INTERVAL_S
         finally:
             self._fetching = False
 
-    def _fetch(self) -> str | None:
-        """Fetch Open-Meteo current conditions; return state string or None on error."""
+    def _fetch(self) -> tuple[str, float] | None:
+        """Fetch Open-Meteo current conditions; return (state, temp_c) or None on error."""
         url = _OPEN_METEO_URL.format(lat=self._lat, lon=self._lon)
         try:
             with urllib.request.urlopen(url, timeout=10) as resp:
                 data = json.loads(resp.read())
             cur = data['current']
-            return _wmo_to_state(
+            state = _wmo_to_state(
                 int(cur.get('weather_code', 0)),
                 float(cur.get('cloud_cover', 0)),
                 float(cur.get('precipitation', 0)),
             )
+            temp_c = float(cur.get('temperature_2m', 12.0))
+            return state, temp_c
         except Exception:
             return None
