@@ -6,121 +6,7 @@
 <meta name="description" content="City energy analysis — Python simulation backend, browser renders only.">
 <title>City Energy Analysis</title>
 <link rel="icon" href="data:,">
-<style>
-  :root{
-    --glass: rgba(16, 22, 40, 0.78);
-    --glass-border: rgba(255,255,255,0.14);
-    --text: #eef2fa;
-    --text-dim: #aab4cc;
-    --accent: #ffc94d;
-    --accent2: #5fd4a8;
-  }
-  *{ box-sizing: border-box; }
-  html, body{ margin:0; padding:0; height:100%; overflow:hidden;
-    font-family: "Segoe UI", "Noto Sans", system-ui, -apple-system, sans-serif;
-    background:#0b1026; color:var(--text); }
-  #city{ position:fixed; inset:0; width:100%; height:100%; display:block;
-    touch-action:none; cursor:grab; }
-  #city.dragging{ cursor:grabbing; }
-  #city.pointing{ cursor:pointer; }
-
-  .panel{
-    position:fixed; background:var(--glass); border:1px solid var(--glass-border);
-    border-radius:14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    box-shadow: 0 8px 28px rgba(0,0,0,0.35); padding:12px 14px; z-index:10;
-  }
-
-  /* HUD */
-  #hud{ top:14px; left:14px; min-width:200px; }
-  #hud h1{ margin:0 0 2px; font-size:17px; letter-spacing:0.4px; }
-  #hud .clock{ font-size:22px; font-variant-numeric:tabular-nums; font-weight:700; margin:2px 0 6px; }
-  #hud .clock .glyph{ font-size:16px; margin-left:6px; }
-  #hud .stat{ display:flex; justify-content:space-between; gap:18px; font-size:13px;
-    color:var(--text-dim); padding:1px 0; }
-  #hud .stat b{ color:var(--text); font-variant-numeric:tabular-nums; }
-  #hud .tools{ display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
-  #hud .tools button{ min-width:30%; }
-  #bldgTypes{ margin-top:6px; }
-  #hud #bldgTypes button.active{ background:var(--accent); border-color:var(--accent);
-    color:#1c1605; font-weight:600; }
-  #hud .tools button{ flex:1; border:1px solid var(--glass-border); background:rgba(255,255,255,0.06);
-    color:var(--text-dim); font:inherit; font-size:12px; padding:4px 6px; border-radius:8px; cursor:pointer; }
-  #hud .tools button:hover{ color:var(--text); }
-  #hud .tools button.active{ background:var(--accent2); border-color:var(--accent2);
-    color:#0c2018; font-weight:600; }
-  #city.placing{ cursor:crosshair; }
-  #hud .backend{ margin-top:8px; font-size:12px; color:var(--text-dim);
-    display:flex; align-items:center; gap:7px; }
-  #hud .backend .dot{ width:9px; height:9px; border-radius:50%; background:#888; flex:none; }
-  #hud .backend.live .dot{ background:var(--accent2); box-shadow:0 0 8px var(--accent2); }
-  #hud .backend.dead .dot{ background:#e84545; box-shadow:0 0 8px #e84545; }
-
-  /* time controls */
-  #timeControls{ margin-top:9px; }
-  #timeSliderRow{ display:flex; align-items:center; gap:7px; margin-bottom:5px; }
-  #playBtn{ width:28px; height:28px; border-radius:8px; border:1px solid var(--glass-border);
-    background:rgba(255,255,255,0.08); color:var(--text); font-size:14px; cursor:pointer;
-    display:flex; align-items:center; justify-content:center; flex:none; padding:0; }
-  #playBtn:hover{ background:rgba(255,255,255,0.18); }
-  #timeSlider{ flex:1; -webkit-appearance:none; appearance:none; height:4px;
-    border-radius:2px; background:rgba(255,255,255,0.15); outline:none; cursor:pointer; }
-  #timeSlider::-webkit-slider-thumb{ -webkit-appearance:none; width:14px; height:14px;
-    border-radius:50%; background:var(--accent); cursor:pointer; }
-  #timeSlider::-moz-range-thumb{ width:14px; height:14px; border:none;
-    border-radius:50%; background:var(--accent); cursor:pointer; }
-  #speedRow{ display:flex; gap:5px; }
-  #speedRow button{ flex:1; border:1px solid var(--glass-border); background:rgba(255,255,255,0.06);
-    color:var(--text-dim); font:inherit; font-size:11px; padding:3px 4px;
-    border-radius:7px; cursor:pointer; }
-  #speedRow button:hover{ color:var(--text); }
-  #speedRow button.active{ background:var(--accent2); border-color:var(--accent2);
-    color:#0c2018; font-weight:600; }
-
-  /* Detail popup (building / car / person) */
-  #popup{ top:80px; right:16px; width:340px; max-width:calc(100vw - 24px); z-index:20; display:none; }
-  #popup.open{ display:block; }
-  #popup .close{ position:absolute; top:8px; right:10px; border:none; background:none;
-    color:var(--text-dim); font-size:20px; cursor:pointer; line-height:1; padding:4px; }
-  #popup .close:hover{ color:var(--text); }
-  #popup h2{ margin:0 36px 2px 0; font-size:17px; }
-  #popup .sub{ margin:0 0 10px; font-size:12.5px; color:var(--text-dim); }
-  #chart{ width:100%; height:180px; display:block; border-radius:8px; background:rgba(8,12,28,0.6); }
-  #popupNow{ margin:8px 0 0; font-size:14px; }
-  #popupNow b{ color:var(--accent); font-size:18px; font-variant-numeric:tabular-nums; }
-  #popupEdit{ display:none; margin:10px 0 0; align-items:center; gap:10px; font-size:13px;
-    color:var(--text-dim); }
-  #popup.editable #popupEdit{ display:flex; }
-  #popupEdit button{ width:26px; height:26px; border-radius:7px; border:1px solid var(--glass-border);
-    background:rgba(255,255,255,0.08); color:var(--text); font-size:15px; cursor:pointer; line-height:1; }
-  #popupEdit button:hover{ background:rgba(255,255,255,0.18); }
-  #popupEdit button:disabled{ opacity:0.4; cursor:default; }
-  #popupEdit b{ min-width:22px; text-align:center; color:var(--text);
-    font-size:15px; font-variant-numeric:tabular-nums; }
-  #popupActions{ display:none; margin:10px 0 0; }
-  #popup.removable #popupActions{ display:flex; }
-  #popupActions button{ border:1px solid rgba(232,69,69,0.5); background:rgba(232,69,69,0.14);
-    color:#ff9d9d; font:inherit; font-size:12.5px; padding:5px 14px; border-radius:8px; cursor:pointer; }
-  #popupActions button:hover{ background:rgba(232,69,69,0.32); color:#fff; }
-
-  /* tooltip */
-  #tooltip{ position:fixed; pointer-events:none; z-index:30; display:none;
-    background:rgba(10,14,30,0.92); border:1px solid var(--glass-border); color:var(--text);
-    font-size:12px; padding:4px 9px; border-radius:7px; white-space:nowrap; }
-
-  /* hint toast */
-  #toast{ top:14px; left:50%; transform:translateX(-50%); font-size:13px; color:var(--text);
-    display:flex; gap:10px; align-items:center; transition:opacity 0.8s; max-width:92vw; }
-  #toast.hide{ opacity:0; pointer-events:none; }
-  #toast .dot{ width:10px; height:10px; border-radius:50%; background:var(--accent);
-    box-shadow:0 0 10px var(--accent); flex:none; }
-
-  @media (max-width: 760px){
-    #hud{ min-width:160px; padding:10px 12px; }
-    #hud .clock{ font-size:18px; }
-    #popup{ top:auto; bottom:16px; right:12px; left:12px; width:auto; }
-    #toast{ top:auto; bottom:14px; left:12px; right:12px; transform:none; font-size:12px; }
-  }
-</style>
+<link rel="stylesheet" href="css/main.css">
 </head>
 <body>
 <canvas id="city" aria-label="Isometric city scene — click the building, car or person to query the analysis backend"></canvas>
@@ -187,6 +73,6 @@
 
 <div id="tooltip"></div>
 
-<script src="app.js"></script>
+<script type="module" src="js/app.js"></script>
 </body>
 </html>

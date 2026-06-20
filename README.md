@@ -5,28 +5,52 @@ around Market Square) where **all simulation runs in a Python backend** and the 
 is render-only. Real building footprints, real streets; cars and people random-walk the
 actual street network; clicking any entity fetches its analysis from the backend.
 
-- `input/` — all run inputs live here; no world facts or run settings are hard-coded:
-  - `config.json` — which world to run (`"world": "map"` or `"grid"`), seed, start hour,
-    tick rate, sim time scale.
-  - `map.json` — real-map spec: area name, center lat/lon, radius, cache file, agent
-    counts and speeds.
-  - `grid.json` — grid test scene spec: buildings, roads, lamps, signals, agent counts
-    and speeds (ships as the minimal test scene: 1 building, 1 road, 1 lamp, 1 car, 1 person).
-- `backend/config.py` — loads and validates the `input/` files.
-- `backend/osm_world.py` — Overpass API fetch (cached in `backend/data/`) and
-  OSM → world conversion: building polygons (type/floors from tags), road polylines,
-  street graphs for cars and pedestrians, street lamps, parks/water.
-- `backend/grid_world.py` — builds the hand-made grid world from `input/grid.json`
-  (same data shape as the OSM world, so simulation and renderer are unchanged).
-- `backend/simulation.py` — simulation core: sim clock (time scale, tick rate and agent
-  speeds all from `input/`), per-building energy model (occupancy-curve based, 24 h
-  history), graph random-walk cars and people.
-- `backend/main.py` — FastAPI app: background tick loop (rate from `input/config.json`)
-  + JSON API + static serving.
-- `frontend/` — render-only canvas: extruded footprint prisms, pan/zoom camera, polls
-  `/api/state`, draws whatever `/api/world` returns; click → `/api/building|car|person/{id}`
-  → popup chart. No world data is baked into the frontend.
-- `index.html` (repo root) — original personal-web demo, kept as the design reference.
+Energy model based on the **ISO 13790** single-zone 1C RC thermal method — per-building
+thermal node, occupancy schedules from SIA 2044, envelope U-values, solar gain,
+CO₂ emissions, and rooftop PV generation.
+
+---
+
+## Project structure
+
+```
+turbo-city/
+├── input/                    # All run configuration (no world facts hard-coded)
+│   ├── config.json           # world, seed, start_hour, tick_hz, sim_min_per_sec
+│   ├── map.json              # Real-map spec: center lat/lon, radius, cache file, agent counts
+│   └── grid.json             # Grid test scene: buildings, roads, lamps, signals, agent counts
+├── backend/
+│   ├── config.py             # Loads and validates input/ files
+│   ├── osm_world.py          # Overpass API fetch → OSM → world (cached)
+│   ├── grid_world.py         # Hand-made grid world from input/grid.json
+│   ├── simulation.py         # Sim core: clock, 1C RC thermal, occupancy, energy history
+│   ├── energy.py             # CEA-inspired energy model (HVAC, electrical, lighting, PV, CO₂)
+│   ├── constants.py          # Occupancy schedules, defaults, agent flavour data
+│   ├── weather.py            # Open-Meteo API weather (real temperature + state machine)
+│   └── main.py               # FastAPI app: tick loop + JSON API + static serving
+└── frontend/
+    ├── index.html            # Single HTML page — no build step required
+    ├── css/
+    │   └── main.css          # All styles (extracted from index.html for reuse)
+    └── js/                   # Native ES modules — browser loads directly, no npm/bundler
+        ├── app.js            # Entry point: imports all modules, runs boot sequence
+        ├── config.js         # Shared constants (HW, HH, PALETTES, TYPE_LABEL, …)
+        ├── math.js           # Pure functions (lerp, clamp, isoX/Y, shade, euiColor, …)
+        ├── state.js          # Shared mutable appState + frameState() interpolation
+        ├── camera.js         # cam object, viewport, resize, fitCamera, screenToWorld, zoomAt
+        ├── api.js            # fetchWorld, pollState, sendEdit, sendSpeed, sendSeek
+        ├── world-prep.js     # prepareWorld(), isoPath(), ground layers (Path2D)
+        ├── render.js         # requestAnimationFrame render loop + all draw functions
+        ├── input.js          # Pointer events, pan/zoom, road/building drag, hit test, click
+        └── ui/
+            ├── hud.js        # updateHUD(s) — clock, stats, backend badge, time slider sync
+            ├── toolbar.js    # setTool(), building type selector, EUI overlay toggle
+            ├── popup.js      # openDetail(), closePopup(), refreshDetail(), renderChart()
+            ├── time-controls.js  # Play/pause, speed buttons, time slider drag
+            └── toast.js      # flashToast(msg) — dismissable hint messages
+```
+
+---
 
 ## Run
 
@@ -36,15 +60,66 @@ pip install -r requirements.txt
 uvicorn backend.main:app --reload
 ```
 
-Then open http://localhost:8000 — drag to pan, scroll to zoom. Click a building, a car
-or a person: the popup data comes from a backend API call (visible in the Network tab).
+Then open **http://localhost:8000** — drag to pan, scroll to zoom.
+
+> **No build step.** The frontend is plain HTML + CSS + native ES modules.
+> The browser resolves all `import` statements directly; nothing needs to be compiled or bundled.
+
 The world is chosen entirely by `input/config.json`; with `--reload`, editing any
 `input/*.json` restarts the server automatically.
 
-### Minimal working example A — grid test scene (offline, no internet)
+---
 
-This is the smallest world: one building, one road, one lamp, one car, one person.
-It needs no network — the geometry comes straight from `input/grid.json`.
+## Building types
+
+Six types supported, each with its own CEA-sourced occupancy schedule, envelope
+U-values, appliance/lighting power density, and HVAC setpoints:
+
+| Type | Icon | Key characteristics |
+|---|---|---|
+| `res` | 🏠 | Residential — evening peak occupancy, moderate loads |
+| `office` | 🏢 | Office — business hours, high appliance density |
+| `shop` | 🛍 | Shop — retail hours, high lighting load |
+| `hospital` | 🏥 | Hospital — 24/7 baseline occupancy (0.43), dual peaks at 09:00 and 14:00 |
+| `school` | 🏫 | School — empty at night, full day 09–15 h |
+| `industrial` | 🏭 | Industrial — shift pattern, highest appliance load (26.5 W/m²) |
+
+---
+
+## Energy model
+
+Each building runs a **1C RC thermal node** (ISO 13790 / SIA 2044 single-zone model):
+
+```
+C · dT/dt = Q_solar + Q_internal − UA · (T_in − T_out)
+```
+
+- **UA** — envelope conductance from wall/window/roof/slab U-values and per-type window-to-wall ratio
+- **Q_solar** — window solar gain weighted by façade orientation factor (per-wall-edge normal angles)
+- **HVAC** — proportional to UA × temperature deviation from setpoint, divided by COP
+- **Lighting** — reduced by daylight factor (peaks at noon, zero outside 06–18 h)
+- **CO₂** — grid electricity × 0.233 kg/kWh (UK National Grid 2024 average)
+- **PV** — roof area × 0.40 usable fraction × 18% panel efficiency × cloud-adjusted irradiance
+- **Real outdoor temperature** — fetched from Open-Meteo API when running in map mode; synthetic daily profile used as fallback
+
+---
+
+## HUD stats
+
+| Stat | Description |
+|---|---|
+| Buildings | Total building count |
+| Vehicles | Cars currently in the scene |
+| People | Pedestrians currently in the scene |
+| Grid load | Sum of all building loads (kW or MW) |
+| CO₂ | Total emissions from grid electricity (kg/h or t/h) |
+| Solar PV | Total rooftop generation across all buildings (kW or MW) |
+
+**EUI heat-map** (🌡 EUI button): toggle colour-coded rooftops — green = energy-efficient, red = high EUI. Gold glow on rooftop = building is generating significant solar PV.
+
+---
+
+## Minimal working example A — grid test scene (offline)
 
 `input/config.json`:
 
@@ -58,7 +133,7 @@ It needs no network — the geometry comes straight from `input/grid.json`.
 }
 ```
 
-`input/grid.json` (the whole scene — edit coordinates/counts/speeds to taste):
+`input/grid.json`:
 
 ```json
 {
@@ -81,19 +156,19 @@ It needs no network — the geometry comes straight from `input/grid.json`.
 }
 ```
 
-Run `uvicorn backend.main:app --reload` and open the page — you should see exactly one
-building, one car driving the road, one walker and one lamp, with the HUD reading
-Buildings 1 / Vehicles 1 / People 1.
+Run `uvicorn backend.main:app --reload` — one building, one road, one car, one walker, one lamp.
 
-Coordinates are meters (`x` east, `y` south); buildings need a polygon of ≥3 points,
-roads a polyline of ≥2 points, and `class` must be one of the road classes in
-`backend/osm_world.py` (`residential`, `primary`, `footway`, …). Points on different
-roads that share the same coordinate are merged into one graph node, so roads connect.
+Coordinates are meters (`x` east, `y` south); shared road endpoints merge into one graph node,
+so roads connect. Building `type` must be one of: `res`, `office`, `shop`, `hospital`, `school`, `industrial`.
 
-### Minimal working example B — real Cambridge map (needs internet once)
+---
 
-Switch `"world"` to `"map"` in `input/config.json`; everything else about the area lives
-in `input/map.json`:
+## Minimal working example B — real Cambridge map (needs internet once)
+
+Set `"world": "map"` in `input/config.json`. The first start downloads the OSM area once
+via the Overpass API and caches it to `backend/data/<cache_file>`; after that it runs offline.
+
+`input/map.json`:
 
 ```json
 {
@@ -108,53 +183,61 @@ in `input/map.json`:
 }
 ```
 
-The first start downloads the OSM area once via the Overpass API and caches it to
-`backend/data/<cache_file>`; after that it runs offline. Click The Guildhall, Senate
-House, a car or a person to query the backend. To use a **different area**, change
-`center` / `radius_m` and give `cache_file` a new name (or delete the old cache file).
+---
 
 ## API
 
 | Route | Returns |
 |---|---|
-| `GET /api/world` | static layout: building polygons, roads, lamps, parks; includes `world_rev` |
-| `GET /api/state` | dynamic snapshot: clock, car/person positions + headings, total load, `world_rev` |
-| `POST /api/edit` | apply an edit command, e.g. `{"op": "set_floors", "id": 0, "floors": 5}`; bumps `world_rev` |
-| `GET /api/building/{id}` | 24 h energy history + current kW + occupancy |
-| `GET /api/car/{id}` | speed history (last 60 s) + distance |
-| `GET /api/person/{id}` | steps/hour history (24 h) + distance |
+| `GET /api/world` | Static layout: building polygons, roads, lamps, parks; includes `world_rev` |
+| `GET /api/state` | Dynamic snapshot: clock, positions, total load/CO₂/PV, EUI per building, `world_rev` |
+| `POST /api/edit` | Apply an edit command (see below); bumps `world_rev` |
+| `GET /api/building/{id}` | 24 h energy history + current kW, CO₂, PV, indoor temp, occupancy |
+| `GET /api/car/{id}` | Speed history (last 60 s) + distance |
+| `GET /api/person/{id}` | Steps/hour history (24 h) + distance |
 
-## Editing (work in progress, SimCity direction)
+---
 
-The world is editable at runtime through `POST /api/edit` commands; every accepted edit
-bumps `world_rev`, and clients refetch `/api/world` when they see the revision change in
-`/api/state`. Edits are in-memory for now (restart reloads `input/`).
+## Editing
 
-Implemented ops:
+Every accepted edit bumps `world_rev`; the frontend refetches `/api/world` when it sees
+the revision change. Edits are in-memory (restart reloads `input/`).
 
-- `set_floors` `{id, floors}` — click a building, use the − / + control in the popup;
-  height, energy model and grid load update live.
-- `spawn_car` / `spawn_person` `{x?, y?}` — arm **+ Car** / **+ Person** in the HUD, then
-  click the map; the agent spawns on the nearest road node (omit x/y for random). Agent
-  ids are stable across removals.
-- `remove_car` / `remove_person` `{id}` — click a car or person, then **Remove** in the popup.
-- `add_road` `{points, class?, name?}` — arm **+ Road**, then drag on the map; the segment
-  snaps to a 10 m grid (drag consecutive segments from the same point to draw a polyline —
-  shared endpoints merge into one graph node, so they connect). Street graphs rebuild and
-  agents re-seat automatically.
-- `add_building` `{polygon, type?, floors?, name?}` — arm **+ Bldg**, pick a type
-  (Res/Office/Shop), then drag a footprint; it snaps to the grid. The server rejects
-  footprints that overlap another building or a road body (centerline ± half width);
-  unnamed buildings get a generated name and per-type default floors.
-- `remove_building` `{id}` — **Doze** click, or the **Remove** button in any popup
-  (buildings, cars and people are all removable now).
-- `remove_road` `{id}` — arm **Doze**, hover to see the target, click to bulldoze.
-  Removing the last drivable/walkable road is rejected while cars/people exist (the
-  reason flashes in the toast).
+| Op | Args | Description |
+|---|---|---|
+| `set_floors` | `id, floors` | Change building height; energy model updates live |
+| `spawn_car` | `x?, y?` | Arm **+ Car**, click map; spawns on nearest road node |
+| `spawn_person` | `x?, y?` | Arm **+ Person**, click map |
+| `remove_car` / `remove_person` | `id` | Click entity → **Remove** in popup |
+| `add_road` | `points, class?, name?` | Arm **+ Road**, drag on map (10 m snap grid) |
+| `add_building` | `polygon, type?, floors?, name?` | Arm **+ Bldg**, pick type, drag footprint |
+| `remove_building` | `id` | **Doze** click or popup **Remove** |
+| `remove_road` | `id` | Arm **Doze**, hover to preview, click to bulldoze |
+| `set_speed` | `sim_min_per_sec` | Speed buttons (1× / 10× / 60× / 360×) |
+| `seek_time` | `clock_min` | Time slider drag — pauses, seeks, then resumes |
 
-Planned next: save/load, destination routing, undo.
+---
+
+## Adding a new UI panel
+
+Every future panel follows the same four-step pattern:
+
+1. Create `frontend/js/ui/<panel>.js` — import `appState` from `../state.js`, export `setup<Panel>()`
+2. Add the HTML stub (`<div id="panel" class="panel">`) to `index.html`
+3. Add the panel's CSS to `frontend/css/main.css`
+4. Add two lines to `frontend/js/app.js`:
+   ```js
+   import { setupPanel } from './ui/<panel>.js';
+   setupPanel();
+   ```
+
+No other file needs to change.
+
+---
 
 ## Current simplifications
 
-- Traffic signals are rendered with cycling lights but cars don't stop at them yet.
-- Agents random-walk (no destination routing); energy model is illustrative, not calibrated.
+- Traffic signals are rendered with cycling lights but cars do not stop at them.
+- Agents random-walk (no destination routing).
+- Edits are in-memory; restart reloads `input/` and discards runtime changes.
+- PV self-consumption and battery storage not yet modelled.
