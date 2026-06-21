@@ -105,13 +105,13 @@ html, body{ margin:0; padding:0; height:100%; overflow:hidden;
 #toast .dot{ width:10px; height:10px; border-radius:50%; background:var(--accent);
   box-shadow:0 0 10px var(--accent); flex:none; }
 
-/* Change City button (in HUD) */
-#changeCityBtn {
+/* Change City / Export buttons (in HUD) */
+#changeCityBtn, #exportBtn {
   margin-top:8px; width:100%; border:1px solid var(--glass-border);
   background:rgba(255,255,255,0.06); color:var(--text-dim); font:inherit;
   font-size:12px; padding:5px 8px; border-radius:8px; cursor:pointer;
 }
-#changeCityBtn:hover { color:var(--text); background:rgba(255,255,255,0.12); }
+#changeCityBtn:hover, #exportBtn:hover { color:var(--text); background:rgba(255,255,255,0.12); }
 
 /* City loader panel */
 #cityPanel { top:80px; right:16px; width:260px; z-index:25; }

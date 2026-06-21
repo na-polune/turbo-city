@@ -1,11 +1,14 @@
 """FastAPI app: simulation tick loop + JSON API + static frontend."""
 import asyncio
+import csv
+import io
 import json as _json
 import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from .simulation import Simulation
@@ -75,6 +78,24 @@ async def car(car_id: int):
 @app.get("/api/person/{person_id}")
 async def person(person_id: int):
     return or_404(sim.person_detail(person_id))
+
+
+@app.get("/api/export/buildings.csv")
+async def export_buildings_csv():
+    """Current per-building EUI / CO₂ / PV snapshot as a downloadable CSV."""
+    rows = sim.building_table()
+    cols = ["id", "name", "type", "floors", "area_m2", "load_kw", "hvac_kw",
+            "elec_kw", "light_kw", "eui_w_m2", "co2_kg_h", "pv_kw", "t_in_c", "occupancy"]
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=cols)
+    w.writeheader()
+    w.writerows(rows)
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", sim.world_data["name"]).strip("-").lower() or "city"
+    m = int(sim.clock_min % 1440)
+    fname = f"eui_{slug}_{m // 60:02d}{m % 60:02d}.csv"
+    # utf-8-sig prepends a BOM so Excel reads non-ASCII building names correctly
+    return Response(buf.getvalue().encode("utf-8-sig"), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
 @app.post("/api/load_city")

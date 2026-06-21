@@ -114,6 +114,10 @@ class Building:
         return [round(self.history[(self.hist_idx + i) % HISTORY_LEN], 1)
                 for i in range(HISTORY_LEN)]
 
+    def eui_w_m2(self):
+        """Energy use intensity over total floor area [W/m²]."""
+        return self.load_kw * 1000 / max(1, self.area_m2 * self.floors)
+
 
 class Walker:
     """Random-walk along a graph: edge (a -> b) with progress in meters."""
@@ -295,10 +299,14 @@ class Simulation:
         self._car_speed = tuple(w.get("car_speed_mps") or CAR_SPEED_MPS)
         self._person_speed = tuple(w.get("person_speed_mps") or PERSON_SPEED_MPS)
         self.buildings = [Building(b, self.rng) for b in w["buildings"]]
+        # Empty/rural areas can yield no drivable or walkable roads; spawn no
+        # agents there rather than crashing (mirrors the spawn_* edit guards).
+        n_cars = w["n_cars"] if w["car_graph"]["adj"] else 0
+        n_people = w["n_people"] if w["ped_graph"]["adj"] else 0
         self.cars = [Car(i, w["car_graph"], self.rng, self._car_speed)
-                     for i in range(w["n_cars"])]
+                     for i in range(n_cars)]
         self.people = [Person(i, w["ped_graph"], self.rng, self._person_speed)
-                       for i in range(w["n_people"])]
+                       for i in range(n_people)]
         self._next_car_id = len(self.cars)        # ids stay unique across removals
         self._next_person_id = len(self.people)
         self._next_road_id = len(w["roads"])
@@ -581,7 +589,7 @@ class Simulation:
 
     def state(self):
         # EUI [W/m² total floor area] per building, normalised 0–1 city-wide
-        euis = [b.load_kw * 1000 / max(1, b.area_m2 * b.floors) for b in self.buildings]
+        euis = [b.eui_w_m2() for b in self.buildings]
         eui_min = min(euis) if euis else 0.0
         eui_max = max(euis) if euis else 1.0
         eui_range = max(1.0, eui_max - eui_min)
@@ -631,6 +639,19 @@ class Simulation:
             "sample_min": SAMPLE_MIN,
             "history_kw": b.history_series(),
         }
+
+    def building_table(self):
+        """One row per building — current snapshot for CSV/report export."""
+        hour = (self.clock_min % 1440) / 60.0
+        return [{
+            "id": b.id, "name": b.name, "type": b.type,
+            "floors": b.floors, "area_m2": b.area_m2,
+            "load_kw": round(b.load_kw, 1), "hvac_kw": round(b.hvac_kw, 1),
+            "elec_kw": round(b.elec_kw, 1), "light_kw": round(b.light_kw, 1),
+            "eui_w_m2": round(b.eui_w_m2(), 1), "co2_kg_h": round(b.co2_kg_h, 2),
+            "pv_kw": round(b.pv_kw, 1), "t_in_c": round(b.T_in, 1),
+            "occupancy": round(b.occupancy(hour), 2),
+        } for b in self.buildings]
 
     def car_detail(self, i):
         c = self._find(self.cars, i)
