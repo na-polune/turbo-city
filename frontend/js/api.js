@@ -85,3 +85,18 @@ export function sendSeek(clockMin) {
     body: JSON.stringify({ op: 'seek_time', clock_min: clockMin }),
   }).catch(() => {});
 }
+
+export async function loadCity(lat, lon, radius_m, name) {
+  const r = await fetch('/api/load_city', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lat, lon, radius_m, name }),
+  });
+  if (!r.ok) {
+    const e = await r.json().catch(() => null);
+    throw new Error(e && e.detail ? e.detail : 'load city failed');
+  }
+  const data = await r.json();
+  await fetchWorld();
+  return data;
+}

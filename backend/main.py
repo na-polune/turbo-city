@@ -1,5 +1,7 @@
 """FastAPI app: simulation tick loop + JSON API + static frontend."""
 import asyncio
+import json as _json
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -7,6 +9,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 from .simulation import Simulation
+
+INPUT_DIR = Path(__file__).resolve().parent.parent / "input"
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
@@ -71,6 +75,56 @@ async def car(car_id: int):
 @app.get("/api/person/{person_id}")
 async def person(person_id: int):
     return or_404(sim.person_detail(person_id))
+
+
+@app.post("/api/load_city")
+async def load_city(body: dict):
+    """Write new input/map.json and reinitialise the simulation for any lat/lon."""
+    lat = body.get("lat")
+    lon = body.get("lon")
+    radius_m = body.get("radius_m", 250)
+    name = body.get("name") or ""
+
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+    if not (num(lat) and -90 <= lat <= 90):
+        raise HTTPException(status_code=400, detail="lat must be a number in -90..90")
+    if not (num(lon) and -180 <= lon <= 180):
+        raise HTTPException(status_code=400, detail="lon must be a number in -180..180")
+    if not (num(radius_m) and 50 <= radius_m <= 2000):
+        raise HTTPException(status_code=400, detail="radius_m must be a number in 50..2000")
+
+    name = str(name)[:60].strip() or f"{lat:.4f}, {lon:.4f}"
+    cache_file = f"city_{lat:.4f}_{lon:.4f}.json".replace("-", "m")
+
+    spec = {
+        "name": name,
+        "center": [round(lat, 6), round(lon, 6)],
+        "radius_m": int(radius_m),
+        "cache_file": cache_file,
+        "n_cars": 8,
+        "n_people": 15,
+        "car_speed_mps": [6.0, 9.0],
+        "person_speed_mps": [1.1, 1.7],
+    }
+    (INPUT_DIR / "map.json").write_text(_json.dumps(spec, indent=2), encoding="utf-8")
+
+    # Ensure config.json uses map mode
+    cfg_path = INPUT_DIR / "config.json"
+    cfg = _json.loads(cfg_path.read_text(encoding="utf-8"))
+    if cfg.get("world") != "map":
+        cfg["world"] = "map"
+        cfg_path.write_text(_json.dumps(cfg, indent=2), encoding="utf-8")
+
+    # Build the new simulation in a thread so the Overpass fetch doesn't block the event loop
+    loop = asyncio.get_running_loop()
+    try:
+        new_sim = await loop.run_in_executor(None, Simulation)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"World build failed: {e}")
+
+    global sim
+    sim = new_sim
+    return {"ok": True, "name": name, "world_rev": sim.world_rev}
 
 
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

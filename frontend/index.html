@@ -38,6 +38,7 @@
     <button data-btype="industrial">🏭 Industrial</button>
   </div>
   <div class="backend" id="backendBadge"><span class="dot"></span><span id="backendText">connecting…</span></div>
+  <button id="changeCityBtn">Change City</button>
   <div id="timeControls">
     <div id="timeSliderRow">
       <button id="playBtn" title="Play / Pause">⏸</button>
@@ -67,6 +68,20 @@
   <div id="popupActions">
     <button id="entityRemove">🗑 Remove</button>
   </div>
+</div>
+
+<div id="cityPanel" class="panel" role="dialog" aria-labelledby="cityPanelTitle" style="display:none">
+  <button class="close" id="cityClose" aria-label="Close">✕</button>
+  <h2 id="cityPanelTitle">Load City</h2>
+  <p class="sub">Enter any location — OSM data will be fetched (first load ~10 s, then cached).</p>
+  <form id="cityForm" onsubmit="return false">
+    <label>Name<input id="cityName" type="text" placeholder="e.g. Tokyo Station" maxlength="60" autocomplete="off"></label>
+    <label>Latitude<input id="cityLat" type="number" step="any" min="-90" max="90" placeholder="e.g. 35.6812"></label>
+    <label>Longitude<input id="cityLon" type="number" step="any" min="-180" max="180" placeholder="e.g. 139.7671"></label>
+    <label>Radius (m)<input id="cityRadius" type="number" min="50" max="2000" step="10" value="250"></label>
+    <button id="citySubmit" type="button">Load City</button>
+    <p id="cityStatus" aria-live="polite"></p>
+  </form>
 </div>
 
 <div id="toast" class="panel"><span class="dot"></span><span>Drag to pan, scroll to zoom. Click any <b>building</b>, <b>car</b> or <b>person</b>; results come from the Python backend.</span></div>
