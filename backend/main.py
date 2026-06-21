@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
+from . import scenario
 from .simulation import Simulation
 
 INPUT_DIR = Path(__file__).resolve().parent.parent / "input"
@@ -96,6 +97,21 @@ async def export_buildings_csv():
     # utf-8-sig prepends a BOM so Excel reads non-ASCII building names correctly
     return Response(buf.getvalue().encode("utf-8-sig"), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@app.post("/api/scenario")
+async def scenario_compare(body: dict):
+    """Before/after retrofit comparison (city-wide measure multipliers).
+
+    Stateless analytical recompute over a deterministic design day — does not
+    touch or pause the live simulation. Body: {"measures": {"u_wall": 0.5,
+    "lpd": 0.5, "cop": 1.5, ...}}; see scenario.MULTIPLIER_MEASURES.
+    """
+    measures = body.get("measures") or {}
+    try:
+        return scenario.compare(sim.buildings, measures)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/load_city")

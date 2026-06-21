@@ -8,8 +8,16 @@ Inspired by CEA (City Energy Analyst, ETH Zurich) and ISO 13790 / SIA 2044:
 
 Constants are sourced from CEA databases and SIA/ISO standards where noted.
 All functions are pure (no state); Building in simulation.py owns T_in.
+
+Per-building parameters (U-values, COP, lighting/appliance density, setpoints, PV)
+are resolved into a frozen ``Params`` set via ``base_params(btype)``. Every model
+function takes an optional ``params`` override; when omitted it falls back to the
+type-keyed module constants, so the live simulation path is unchanged. Retrofit
+scenarios (see backend/scenario.py) pass a modified Params to recompute "after".
 """
 import math
+from dataclasses import dataclass
+from functools import lru_cache
 
 # ---- floor geometry (H_F from CEA demand/constants.py) ----
 FLOOR_HEIGHT = 3.0   # m per floor
@@ -70,13 +78,63 @@ PV_ROOF_FRACTION = 0.40   # usable roof area fraction (excludes obstacles, shadi
 CO2_GRID_KG_KWH = 0.233
 
 
-def pv_gen_kw(area_m2: float, solar_mult: float = 1.0) -> float:
+@dataclass(frozen=True)
+class Params:
+    """Resolved energy parameters for one building (one building type's values).
+
+    Defaults come from the type-keyed module constants via ``base_params``; a
+    retrofit scenario derives a modified copy with ``dataclasses.replace``.
+    Frozen so cached/shared instances can never be mutated by accident.
+    """
+    u_wall: float        # external wall U-value [W/m²K]
+    u_roof: float        # roof U-value [W/m²K]
+    u_win: float         # window U-value [W/m²K]
+    win_wall: float      # window-to-wall ratio [-]
+    g_win: float         # glazing solar heat gain coefficient [-]
+    cm_af: float         # thermal mass [J/K per m² footprint]
+    t_heat: float        # heating setpoint [°C]
+    t_cool: float        # cooling setpoint [°C]
+    cop_heat: float      # heating system COP [-]
+    cop_cool: float      # cooling system COP [-]
+    e_density: float     # appliance power density [W/m²]
+    lpd: float           # lighting power density [W/m²]
+    pv_fraction: float   # usable roof fraction for PV [-]
+    pv_efficiency: float # PV panel efficiency [-]
+
+
+@lru_cache(maxsize=None)
+def base_params(btype: str) -> Params:
+    """Baseline Params for a building type, built from the module constants.
+
+    Cached: the constants never change at runtime, so each type resolves once and
+    the live loop reuses one shared frozen instance (no per-call allocation).
+    """
+    return Params(
+        u_wall=U_WALL[btype], u_roof=U_ROOF[btype], u_win=U_WIN[btype],
+        win_wall=WIN_WALL[btype], g_win=G_WIN[btype], cm_af=Cm_Af[btype],
+        t_heat=T_HEAT[btype], t_cool=T_COOL[btype],
+        cop_heat=COP_HEAT, cop_cool=COP_COOL,
+        e_density=E_DENSITY[btype], lpd=LPD[btype],
+        pv_fraction=PV_ROOF_FRACTION, pv_efficiency=PV_EFFICIENCY,
+    )
+
+
+def _resolve(btype, params):
+    """Pick the explicit params override, or the cached baseline for the type."""
+    return base_params(btype) if params is None else params
+
+
+def pv_gen_kw(area_m2: float, solar_mult: float = 1.0,
+              pv_fraction: float = PV_ROOF_FRACTION,
+              pv_efficiency: float = PV_EFFICIENCY) -> float:
     """Rooftop PV generation [kW].
 
     Flat roof approximation: usable area × panel efficiency × peak irradiance × cloud factor.
     Equivalent to CEA's PhotovoltaicPanel.calc_PV_power() simplified to a scalar.
+    pv_fraction / pv_efficiency default to the module constants; a retrofit scenario
+    passes a building's Params values to model added rooftop PV.
     """
-    return area_m2 * PV_ROOF_FRACTION * PV_EFFICIENCY * SOLAR_PEAK_W_M2 * solar_mult / 1000.0
+    return area_m2 * pv_fraction * pv_efficiency * SOLAR_PEAK_W_M2 * solar_mult / 1000.0
 
 
 def co2_kg_h(load_kw: float) -> float:
@@ -90,21 +148,22 @@ def outdoor_temp_c(clock_min):
     return T_AVG_C - T_AMP_C * math.cos(2 * math.pi * (hour - 15) / 24)
 
 
-def envelope_UA(area_m2, floors, btype):
+def envelope_UA(area_m2, floors, btype, params=None):
     """Total envelope UA [W/K]: walls + windows + roof + ground slab.
 
     Envelope area is estimated from a square footprint (perimeter = 4√area).
     Matches CEA's BuildingRCModel.calc_prop_rc_model() breakdown by surface type.
     """
+    p = _resolve(btype, params)
     h_total    = floors * FLOOR_HEIGHT
     perimeter  = 4.0 * math.sqrt(area_m2)
     wall_gross = perimeter * h_total
-    win_area   = wall_gross * WIN_WALL[btype]
+    win_area   = wall_gross * p.win_wall
     wall_net   = wall_gross - win_area
-    return (U_WALL[btype] * wall_net
-          + U_WIN[btype]  * win_area
-          + U_ROOF[btype] * area_m2
-          + U_BASE        * area_m2 * B_F)
+    return (p.u_wall * wall_net
+          + p.u_win  * win_area
+          + p.u_roof * area_m2
+          + U_BASE   * area_m2 * B_F)
 
 
 def facade_orientation_factor(polygon):
@@ -155,7 +214,7 @@ def facade_orientation_factor(polygon):
     return _factor
 
 
-def solar_gain_W(area_m2, floors, btype, hour, solar_mult=1.0, orientation_factor=0.25):
+def solar_gain_W(area_m2, floors, btype, hour, solar_mult=1.0, orientation_factor=0.25, params=None):
     """Solar gain through windows [W].
 
     orientation_factor: per-face weighted exposure fraction (0–1).
@@ -163,23 +222,25 @@ def solar_gain_W(area_m2, floors, btype, hour, solar_mult=1.0, orientation_facto
     Analogous to CEA's calc_I_sol() in sensible_loads.py.
     solar_mult (0–1) scales for cloud cover from the weather model.
     """
+    p = _resolve(btype, params)
     wall_gross = 4.0 * math.sqrt(area_m2) * floors * FLOOR_HEIGHT
-    win_area   = wall_gross * WIN_WALL[btype]
+    win_area   = wall_gross * p.win_wall
     I_sol = max(0.0, math.sin(math.pi * (hour - 6) / 12)) * SOLAR_PEAK_W_M2
-    return win_area * G_WIN[btype] * I_sol * orientation_factor * solar_mult
+    return win_area * p.g_win * I_sol * orientation_factor * solar_mult
 
 
-def internal_gain_W(area_m2, floors, btype, occ):
+def internal_gain_W(area_m2, floors, btype, occ, params=None):
     """Internal heat gains from equipment + people [W].
 
     Fraction ELEC_TO_HEAT of electrical appliance load stays in the zone as
     heat — consistent with CEA's sensible internal gains (Qs, Qgain_sen).
     """
-    return area_m2 * floors * E_DENSITY[btype] * occ * ELEC_TO_HEAT
+    p = _resolve(btype, params)
+    return area_m2 * floors * p.e_density * occ * ELEC_TO_HEAT
 
 
 def step_T_in(T_in, T_out, area_m2, floors, btype, occ, hour, sim_dt_s,
-              solar_mult=1.0, ua_mult=1.0, orientation_factor=0.25):
+              solar_mult=1.0, ua_mult=1.0, orientation_factor=0.25, params=None):
     """Advance indoor air temperature by sim_dt_s simulation-seconds.
 
     1C RC node: C·dT/dt = Q_gain - UA·(T_in - T_out)
@@ -187,14 +248,16 @@ def step_T_in(T_in, T_out, area_m2, floors, btype, occ, hour, sim_dt_s,
     Mirrors the single-zone ISO 13790 / SIA 2044 5R1C model reduced to 1C.
     solar_mult scales solar gain (clouds); ua_mult scales envelope loss (rain/wind).
     """
-    UA     = envelope_UA(area_m2, floors, btype) * ua_mult
-    Cm     = Cm_Af[btype] * area_m2
-    Q_gain = solar_gain_W(area_m2, floors, btype, hour, solar_mult, orientation_factor) + internal_gain_W(area_m2, floors, btype, occ)
+    p      = _resolve(btype, params)
+    UA     = envelope_UA(area_m2, floors, btype, p) * ua_mult
+    Cm     = p.cm_af * area_m2
+    Q_gain = (solar_gain_W(area_m2, floors, btype, hour, solar_mult, orientation_factor, p)
+              + internal_gain_W(area_m2, floors, btype, occ, p))
     Q_loss = UA * (T_in - T_out)
     return T_in + (Q_gain - Q_loss) / Cm * sim_dt_s
 
 
-def hvac_kw(T_in, area_m2, floors, btype, ua_mult=1.0):
+def hvac_kw(T_in, area_m2, floors, btype, ua_mult=1.0, params=None):
     """HVAC power [kW] to restore the comfort setpoint.
 
     Proportional to the UA-weighted temperature deviation from setpoint,
@@ -202,45 +265,49 @@ def hvac_kw(T_in, area_m2, floors, btype, ua_mult=1.0):
     Heating when T_in < T_HEAT, cooling when T_in > T_COOL, idle in between.
     ua_mult scales envelope conductance (e.g. higher in rain/wind).
     """
-    UA = envelope_UA(area_m2, floors, btype) * ua_mult
-    if T_in < T_HEAT[btype]:
-        return UA * (T_HEAT[btype] - T_in) / (1000.0 * COP_HEAT)
-    if T_in > T_COOL[btype]:
-        return UA * (T_in - T_COOL[btype]) / (1000.0 * COP_COOL)
+    p = _resolve(btype, params)
+    UA = envelope_UA(area_m2, floors, btype, p) * ua_mult
+    if T_in < p.t_heat:
+        return UA * (p.t_heat - T_in) / (1000.0 * p.cop_heat)
+    if T_in > p.t_cool:
+        return UA * (T_in - p.t_cool) / (1000.0 * p.cop_cool)
     return 0.0
 
 
-def electrical_kw(area_m2, floors, btype, occ):
+def electrical_kw(area_m2, floors, btype, occ, params=None):
     """Appliance electrical load [kW].
 
     Power density × total floor area × occupancy fraction.
     Equivalent to CEA's calc_Eal_Epro(): Ea_Wm2 × Af × schedule.
     """
-    return area_m2 * floors * E_DENSITY[btype] * occ / 1000.0
+    p = _resolve(btype, params)
+    return area_m2 * floors * p.e_density * occ / 1000.0
 
 
-def lighting_kw(area_m2, floors, btype, occ, hour):
+def lighting_kw(area_m2, floors, btype, occ, hour, params=None):
     """Lighting load [kW] reduced by daylight availability.
 
     Daylight factor peaks at solar noon (hour=12) and drops to zero outside
     6–18 h, cutting lighting demand by up to 80% — analogous to how CEA's
     El_schedule encodes lower lighting use during daylight hours.
     """
+    p = _resolve(btype, params)
     if 6.0 <= hour <= 18.0:
         daylight = max(0.0, math.sin(math.pi * (hour - 6.0) / 12.0))
     else:
         daylight = 0.0
-    return area_m2 * floors * LPD[btype] * occ * (1.0 - 0.8 * daylight) / 1000.0
+    return area_m2 * floors * p.lpd * occ * (1.0 - 0.8 * daylight) / 1000.0
 
 
-def total_load_kw(T_in, area_m2, floors, btype, occ, hour, ua_mult=1.0):
+def total_load_kw(T_in, area_m2, floors, btype, occ, hour, ua_mult=1.0, params=None):
     """Total building load [kW] and component breakdown.
 
     Returns (total, hvac, electrical, lighting). Minimum 0.5 kW so buildings
     never read zero on the dashboard.
     """
-    h = hvac_kw(T_in, area_m2, floors, btype, ua_mult)
-    e = electrical_kw(area_m2, floors, btype, occ)
-    l = lighting_kw(area_m2, floors, btype, occ, hour)
+    p = _resolve(btype, params)
+    h = hvac_kw(T_in, area_m2, floors, btype, ua_mult, p)
+    e = electrical_kw(area_m2, floors, btype, occ, p)
+    l = lighting_kw(area_m2, floors, btype, occ, hour, p)
     total = max(0.5, h + e + l)
     return total, h, e, l

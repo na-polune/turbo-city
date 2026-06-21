@@ -105,13 +105,65 @@ html, body{ margin:0; padding:0; height:100%; overflow:hidden;
 #toast .dot{ width:10px; height:10px; border-radius:50%; background:var(--accent);
   box-shadow:0 0 10px var(--accent); flex:none; }
 
-/* Change City / Export buttons (in HUD) */
-#changeCityBtn, #exportBtn {
+/* Change City / Export / Scenario buttons (in HUD) */
+#changeCityBtn, #exportBtn, #scenarioBtn {
   margin-top:8px; width:100%; border:1px solid var(--glass-border);
   background:rgba(255,255,255,0.06); color:var(--text-dim); font:inherit;
   font-size:12px; padding:5px 8px; border-radius:8px; cursor:pointer;
 }
-#changeCityBtn:hover, #exportBtn:hover { color:var(--text); background:rgba(255,255,255,0.12); }
+#changeCityBtn:hover, #exportBtn:hover, #scenarioBtn:hover { color:var(--text); background:rgba(255,255,255,0.12); }
+
+/* Retrofit scenario panel */
+#scenarioPanel{ top:80px; right:16px; width:360px; max-width:calc(100vw - 24px);
+  max-height:calc(100vh - 96px); overflow:auto; z-index:25; }
+#scenarioPanel h2{ margin:0 28px 2px 0; font-size:16px; }
+#scenarioPanel .sub{ margin:0 0 10px; font-size:11.5px; color:var(--text-dim); }
+#scenarioPanel .close{ position:absolute; top:8px; right:10px; border:none; background:none;
+  color:var(--text-dim); font-size:20px; cursor:pointer; line-height:1; padding:4px; }
+#scenarioPanel .close:hover{ color:var(--text); }
+
+#scenarioPresets{ display:flex; gap:6px; margin-bottom:10px; }
+#scenarioPresets button{ flex:1; border:1px solid var(--glass-border); background:rgba(255,255,255,0.06);
+  color:var(--text-dim); font:inherit; font-size:12px; padding:5px; border-radius:8px; cursor:pointer; }
+#scenarioPresets button:hover{ color:var(--text); background:rgba(255,255,255,0.12); }
+
+#scenarioMeasures .measure{ margin-bottom:7px; }
+#scenarioMeasures label{ display:flex; justify-content:space-between; align-items:baseline;
+  font-size:12px; color:var(--text-dim); margin-bottom:2px; }
+#scenarioMeasures .mval{ color:var(--accent2); font-variant-numeric:tabular-nums; font-size:11.5px; }
+#scenarioMeasures input[type=range]{ width:100%; -webkit-appearance:none; appearance:none; height:4px;
+  border-radius:2px; background:rgba(255,255,255,0.15); outline:none; cursor:pointer; margin:0; }
+#scenarioMeasures input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:13px; height:13px;
+  border-radius:50%; background:var(--accent2); cursor:pointer; }
+#scenarioMeasures input[type=range]::-moz-range-thumb{ width:13px; height:13px; border:none;
+  border-radius:50%; background:var(--accent2); cursor:pointer; }
+
+#scenarioResults{ margin-top:12px; border-top:1px solid var(--glass-border); padding-top:10px;
+  transition:opacity 0.15s; }
+#scenarioResults.loading{ opacity:0.5; }
+.scenMeta, .scenUnit{ font-size:11px; color:var(--text-dim); text-align:center; }
+.scenMeta{ margin-bottom:8px; }
+.scenUnit{ margin-bottom:12px; }
+
+.scenHeadline{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:2px; }
+.scenHL{ display:flex; flex-direction:column; align-items:center; flex:1; }
+.scenHLk{ font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.4px; }
+.scenHL b{ font-size:26px; font-variant-numeric:tabular-nums; }
+.scenArrow{ font-size:15px; font-weight:700; font-variant-numeric:tabular-nums; padding:0 4px; white-space:nowrap; }
+
+.scenRow{ display:grid; grid-template-columns:1.4fr 1fr 1fr 0.9fr; gap:6px; align-items:baseline;
+  font-size:12px; padding:3px 0; }
+.scenHead{ color:var(--text-dim); font-size:10px; text-transform:uppercase; letter-spacing:0.3px;
+  border-bottom:1px solid var(--glass-border); padding-bottom:4px; margin-bottom:2px; }
+.scenRow .scenLabel{ color:var(--text-dim); }
+.scenRow .scenNum{ text-align:right; font-variant-numeric:tabular-nums; color:var(--text); }
+.scenRow .scenDelta{ text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+.scenRow.strong{ font-weight:600; }
+.scenRow.strong .scenLabel{ color:var(--text); }
+.scenDelta.good, .scenArrow.good{ color:var(--accent2); }
+.scenDelta.bad, .scenArrow.bad{ color:#ff8f8f; }
+.scenDelta.flat, .scenArrow.flat{ color:var(--text-dim); }
+.scenErr{ font-size:12px; color:#ffb4b4; }
 
 /* City loader panel */
 #cityPanel { top:80px; right:16px; width:260px; z-index:25; }

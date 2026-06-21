@@ -39,6 +39,7 @@
   </div>
   <div class="backend" id="backendBadge"><span class="dot"></span><span id="backendText">connecting…</span></div>
   <button id="exportBtn" title="Download the current per-building EUI / CO₂ / PV analysis as CSV">⬇ Export CSV</button>
+  <button id="scenarioBtn" title="Compare the city before vs. after a retrofit (city-wide measures)">📊 Retrofit Scenario</button>
   <button id="changeCityBtn">Change City</button>
   <div id="timeControls">
     <div id="timeSliderRow">
@@ -83,6 +84,15 @@
     <button id="citySubmit" type="button">Load City</button>
     <p id="cityStatus" aria-live="polite"></p>
   </form>
+</div>
+
+<div id="scenarioPanel" class="panel" role="dialog" aria-labelledby="scenarioTitle" style="display:none">
+  <button class="close" id="scenarioClose" aria-label="Close">✕</button>
+  <h2 id="scenarioTitle">Retrofit Scenario</h2>
+  <p class="sub">Before vs. after, city-wide. Deterministic design-day recompute — the live simulation keeps running.</p>
+  <div id="scenarioPresets"></div>
+  <div id="scenarioMeasures"></div>
+  <div id="scenarioResults"></div>
 </div>
 
 <div id="toast" class="panel"><span class="dot"></span><span>Drag to pan, scroll to zoom. Click any <b>building</b>, <b>car</b> or <b>person</b>; results come from the Python backend.</span></div>

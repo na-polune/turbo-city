@@ -195,6 +195,8 @@ via the Overpass API and caches it to `backend/data/<cache_file>`; after that it
 | `GET /api/building/{id}` | 24 h energy history + current kW, CO₂, PV, indoor temp, occupancy |
 | `GET /api/car/{id}` | Speed history (last 60 s) + distance |
 | `GET /api/person/{id}` | Steps/hour history (24 h) + distance |
+| `POST /api/scenario` | Before/after retrofit comparison (see below); stateless, does not touch the live sim |
+| `GET /api/export/buildings.csv` | Current per-building EUI / CO₂ / PV snapshot as a downloadable CSV |
 
 ---
 
@@ -215,6 +217,39 @@ the revision change. Edits are in-memory (restart reloads `input/`).
 | `remove_road` | `id` | Arm **Doze**, hover to preview, click to bulldoze |
 | `set_speed` | `sim_min_per_sec` | Speed buttons (1× / 10× / 60× / 360×) |
 | `seek_time` | `clock_min` | Time slider drag — pauses, seeks, then resumes |
+
+---
+
+## Scenario comparison — retrofit before vs. after
+
+The **📊 Retrofit Scenario** panel (in the HUD) compares the whole city *before* and
+*after* a retrofit, side by side. Because the energy model in `backend/energy.py` is
+pure and parameterised (`Params` / `base_params(btype)`), this needs **no second live
+simulation**: each building's 24 h day is replayed once under baseline parameters and
+once under the retrofitted parameters, then the daily totals are diffed.
+
+A scenario is a set of **city-wide measures** — multipliers on the energy parameters:
+
+| Measure | Param scaled | Improving direction |
+|---|---|---|
+| `u_wall`, `u_roof`, `u_win` | wall / roof / window U-value | factor `< 1` (better insulation) |
+| `g_win`, `win_wall` | glazing solar gain, window-to-wall ratio | factor `< 1` |
+| `lpd` | lighting power density (LED) | factor `< 1` |
+| `e_density` | appliance power density | factor `< 1` |
+| `cop` | heating **and** cooling COP | factor `> 1` (efficient heat pump) |
+| `pv_fraction` | usable roof fraction for PV | factor `> 1` (more panels) |
+| `t_heat_delta`, `t_cool_delta` | setpoint setback [°C] | added to the setpoint |
+
+```bash
+curl -X POST localhost:8000/api/scenario -H 'Content-Type: application/json' \
+  -d '{"measures": {"u_wall": 0.5, "u_win": 0.5, "lpd": 0.45, "cop": 1.6, "pv_fraction": 2.5}}'
+```
+
+Returns city totals for `baseline` and `retrofit` (daily energy, HVAC/lighting/appliance
+split, PV, net grid, CO₂, and floor-area-weighted EUI), the per-metric `delta` (absolute
+and %), and per-building rows. The comparison runs on a **deterministic design day**
+(synthetic outdoor-temperature profile, unit weather multipliers) so it is reproducible
+and reflects only the retrofit — the live simulation keeps running untouched.
 
 ---
 

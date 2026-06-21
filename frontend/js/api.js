@@ -86,6 +86,19 @@ export function sendSeek(clockMin) {
   }).catch(() => {});
 }
 
+export async function runScenario(measures) {
+  const r = await fetch('/api/scenario', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ measures }),
+  });
+  if (!r.ok) {
+    const e = await r.json().catch(() => null);
+    throw new Error(e && e.detail ? e.detail : 'scenario failed');
+  }
+  return r.json();
+}
+
 export async function loadCity(lat, lon, radius_m, name) {
   const r = await fetch('/api/load_city', {
     method: 'POST',
