@@ -1,296 +1,173 @@
-# City Energy Analysis — real-map isometric simulation
+<div align="center">
 
-An isometric city scene built from **real OpenStreetMap data** (Cambridge UK, ~250 m
-around Market Square) where **all simulation runs in a Python backend** and the browser
-is render-only. Real building footprints, real streets; cars and people random-walk the
-actual street network; clicking any entity fetches its analysis from the backend.
+<img src="docs/assets/hero.svg" alt="City Energy Lab" width="100%">
 
-Energy model based on the **ISO 13790** single-zone 1C RC thermal method — per-building
-thermal node, occupancy schedules from SIA 2044, envelope U-values, solar gain,
-CO₂ emissions, and rooftop PV generation.
+<h1>⚡ City Energy Lab</h1>
 
----
+**Real-time urban building-energy simulation on real OpenStreetMap cities.**
+Python computes every building's physics each tick — the browser only renders.
 
-## Project structure
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Frontend](https://img.shields.io/badge/frontend-no%20build%20step-5fd4a8)](docs/architecture.md)
+[![Data](https://img.shields.io/badge/data-OpenStreetMap-7ebc6f?logo=openstreetmap&logoColor=white)](https://www.openstreetmap.org/)
+[![Model](https://img.shields.io/badge/model-ISO%2013790%20·%20SIA%202044-ffc94d)](docs/energy-model.md)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-```
-turbo-city/
-├── input/                    # All run configuration (no world facts hard-coded)
-│   ├── config.json           # world, seed, start_hour, tick_hz, sim_min_per_sec
-│   ├── map.json              # Real-map spec: center lat/lon, radius, cache file, agent counts
-│   └── grid.json             # Grid test scene: buildings, roads, lamps, signals, agent counts
-├── backend/
-│   ├── config.py             # Loads and validates input/ files
-│   ├── osm_world.py          # Overpass API fetch → OSM → world (cached)
-│   ├── grid_world.py         # Hand-made grid world from input/grid.json
-│   ├── simulation.py         # Sim core: clock, 1C RC thermal, occupancy, energy history
-│   ├── energy.py             # CEA-inspired energy model (HVAC, electrical, lighting, PV, CO₂)
-│   ├── constants.py          # Occupancy schedules, defaults, agent flavour data
-│   ├── weather.py            # Open-Meteo API weather (real temperature + state machine)
-│   └── main.py               # FastAPI app: tick loop + JSON API + static serving
-└── frontend/
-    ├── index.html            # Single HTML page — no build step required
-    ├── css/
-    │   └── main.css          # All styles (extracted from index.html for reuse)
-    └── js/                   # Native ES modules — browser loads directly, no npm/bundler
-        ├── app.js            # Entry point: imports all modules, runs boot sequence
-        ├── config.js         # Shared constants (HW, HH, PALETTES, TYPE_LABEL, …)
-        ├── math.js           # Pure functions (lerp, clamp, isoX/Y, shade, euiColor, …)
-        ├── state.js          # Shared mutable appState + frameState() interpolation
-        ├── camera.js         # cam object, viewport, resize, fitCamera, screenToWorld, zoomAt
-        ├── api.js            # fetchWorld, pollState, sendEdit, sendSpeed, sendSeek
-        ├── world-prep.js     # prepareWorld(), isoPath(), ground layers (Path2D)
-        ├── render.js         # requestAnimationFrame render loop + all draw functions
-        ├── input.js          # Pointer events, pan/zoom, road/building drag, hit test, click
-        └── ui/
-            ├── hud.js        # updateHUD(s) — clock, stats, backend badge, time slider sync
-            ├── toolbar.js    # setTool(), building type selector, EUI overlay toggle
-            ├── popup.js      # openDetail(), closePopup(), refreshDetail(), renderChart()
-            ├── time-controls.js  # Play/pause, speed buttons, time slider drag
-            └── toast.js      # flashToast(msg) — dismissable hint messages
-```
+[**Quickstart**](#-quickstart) · [**Documentation**](docs/) · [**Energy model**](docs/energy-model.md) · [**Roadmap**](#-roadmap)
+
+</div>
 
 ---
 
-## Run
+Load any city on Earth by latitude/longitude, watch real building footprints light up with live energy demand, click anything to inspect it, edit the city as it runs, and compare a whole-city retrofit *before vs. after* — all from a tiny, dependency-light Python backend and a zero-build browser front end.
+
+It's a **sandbox**, not a batch tool: the entire city recomputes every tick while you pan, scrub the 24-hour clock, and rebuild streets. The physics is small but honest — a single-node 1C RC thermal model traceable to **ISO 13790 / SIA 2044**.
+
+## ✨ Highlights
+
+- 🗺️ **Real cities** — type a lat/lon and the backend pulls building footprints, streets, parks and water from OpenStreetMap (cached after first load).
+- 🧠 **Server-authoritative physics** — a 1C RC thermal node per building (envelope UA, solar gain, internal/HVAC/lighting/appliance loads), rooftop PV, and CO₂, recomputed every tick.
+- 🖱️ **Fully interactive** — click buildings/cars/people for live detail, add or bulldoze buildings & roads, change floors, spawn agents, scrub time, all live.
+- 📊 **Retrofit scenarios** — drag city-wide measure sliders (insulation, glazing, LED, heat-pump COP, rooftop PV) and see baseline → retrofit EUI, load curves, CO₂ and indicative payback, side by side.
+- 🌡️ **EUI heat-map** — recolor rooftops green→red by energy-use intensity; gold rim marks buildings generating solar PV.
+- 🌦️ **Live weather** — real temperature via the Open-Meteo API; clouds and rain scale solar gain, envelope loss and agent speed.
+- 📦 **No build step** — the front end is plain HTML + CSS + native ES modules. No npm, no bundler, no transpile.
+
+## 🖥️ The interface
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/ui-building.svg" alt="Building detail panel" width="100%"><br>
+      <sub><b>Building detail</b> — live metric tiles + a 24 h load chart for any building you click.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/ui-retrofit.svg" alt="Retrofit scenario panel" width="100%"><br>
+      <sub><b>Retrofit scenario</b> — whole-city before vs. after, with energy, CO₂ and payback.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/ui-eui.svg" alt="EUI heat-map" width="100%"><br>
+      <sub><b>EUI heat-map</b> — efficiency at a glance across the whole city.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <br>
+      <sub>The panels above mirror the live UI. To drop in real screenshots of your own city, see <a href="docs/assets/README.md">docs/assets/README.md</a>.</sub>
+    </td>
+  </tr>
+</table>
+
+## 🚀 Quickstart
 
 ```bash
-python -m venv venv && venv\Scripts\activate && python -m pip install --upgrade pip
+python -m venv venv && venv\Scripts\activate     # Windows
+# python3 -m venv venv && source venv/bin/activate  # macOS / Linux
 pip install -r requirements.txt
 uvicorn backend.main:app --reload
 ```
 
-Then open **http://localhost:8000** — drag to pan, scroll to zoom.
+Open **http://localhost:8000** — drag to pan, scroll to zoom, click any building, car or person.
 
-> **No build step.** The frontend is plain HTML + CSS + native ES modules.
-> The browser resolves all `import` statements directly; nothing needs to be compiled or bundled.
+> **No build step.** The browser resolves every `import` directly; nothing is compiled or bundled.
 
-The world is chosen entirely by `input/config.json`; with `--reload`, editing any
-`input/*.json` restarts the server automatically.
+The world is chosen entirely by `input/config.json` (`"world": "map"` for real OSM, `"grid"` for the offline test scene). With `--reload`, editing any `input/*.json` restarts the server automatically. The first map load fetches the OSM area once via the Overpass API and caches it under `backend/data/` — after that it runs offline.
 
----
+## 🧭 How it works
 
-## Building types
+```mermaid
+flowchart LR
+    OSM[OpenStreetMap] -->|once, cached| BUILD[World build]
+    BUILD --> SIM[Simulation tick loop<br/>physics every building]
+    SIM -->|/api/state @ 10 Hz| BROWSER[Browser · render only]
+    BROWSER -->|/api/edit| SIM
+    SIM -.->|world_rev changed| BROWSER
+```
 
-Six types supported, each with its own CEA-sourced occupancy schedule, envelope
-U-values, appliance/lighting power density, and HVAC setpoints:
+The Python backend owns **all** state and physics in an `asyncio` tick loop. The browser is a thin render client: it polls `/api/state` ~10×/second, draws the scene to a canvas, and sends edits back. A `world_rev` counter tells the client when the static layout changed so it refetches `/api/world`. Full details in [**Architecture & Data Flow**](docs/architecture.md).
 
-| Type | Icon | Key characteristics |
-|---|---|---|
-| `res` | 🏠 | Residential — evening peak occupancy, moderate loads |
+## 🔬 The energy model
+
+Every building is a **single-node 1C RC thermal model** (ISO 13790 / SIA 2044, reduced to one capacitance and one conductance):
+
+```
+C · dT_in/dt  =  Q_solar + Q_internal  −  UA · (T_in − T_out)
+```
+
+- **UA** — envelope conductance from wall/window/roof/slab U-values and window-to-wall ratio
+- **Q_solar** — window gain weighted by a per-façade orientation factor from the real polygon
+- **HVAC** — proportional to `UA × (setpoint − T_in)`, divided by the system COP
+- **Lighting** — reduced by a daylight factor (peaks at noon, zero outside 06–18 h)
+- **PV** — roof area × usable fraction × panel efficiency × cloud-adjusted irradiance
+- **CO₂** — grid electricity × 0.233 kg/kWh
+
+Six building archetypes carry their own standards-based U-values, schedules, densities and setpoints. The full derivation, constant tables, sources, and an honest list of simplifications are in [**The Energy Model**](docs/energy-model.md).
+
+## 🏢 Building types
+
+| Type | Icon | Character |
+|---|:---:|---|
+| `res` | 🏠 | Residential — evening occupancy peak, moderate loads |
 | `office` | 🏢 | Office — business hours, high appliance density |
-| `shop` | 🛍 | Shop — retail hours, high lighting load |
-| `hospital` | 🏥 | Hospital — 24/7 baseline occupancy (0.43), dual peaks at 09:00 and 14:00 |
-| `school` | 🏫 | School — empty at night, full day 09–15 h |
-| `industrial` | 🏭 | Industrial — shift pattern, highest appliance load (26.5 W/m²) |
+| `shop` | 🛍️ | Shop — retail hours, high lighting load |
+| `hospital` | 🏥 | Hospital — 24/7 baseline, dual peaks at 09:00 & 14:00 |
+| `school` | 🏫 | School — empty at night, full 09–15 h |
+| `industrial` | 🏭 | Industrial — shift pattern, highest appliance load |
 
----
-
-## Energy model
-
-Each building runs a **1C RC thermal node** (ISO 13790 / SIA 2044 single-zone model):
-
-```
-C · dT/dt = Q_solar + Q_internal − UA · (T_in − T_out)
-```
-
-- **UA** — envelope conductance from wall/window/roof/slab U-values and per-type window-to-wall ratio
-- **Q_solar** — window solar gain weighted by façade orientation factor (per-wall-edge normal angles)
-- **HVAC** — proportional to UA × temperature deviation from setpoint, divided by COP
-- **Lighting** — reduced by daylight factor (peaks at noon, zero outside 06–18 h)
-- **CO₂** — grid electricity × 0.233 kg/kWh (UK National Grid 2024 average)
-- **PV** — roof area × 0.40 usable fraction × 18% panel efficiency × cloud-adjusted irradiance
-- **Real outdoor temperature** — fetched from Open-Meteo API when running in map mode; synthetic daily profile used as fallback
-
----
-
-## HUD stats
-
-| Stat | Description |
-|---|---|
-| Buildings | Total building count |
-| Vehicles | Cars currently in the scene |
-| People | Pedestrians currently in the scene |
-| Grid load | Sum of all building loads (kW or MW) |
-| CO₂ | Total emissions from grid electricity (kg/h or t/h) |
-| Solar PV | Total rooftop generation across all buildings (kW or MW) |
-
-**EUI heat-map** (🌡 EUI button): toggle colour-coded rooftops — green = energy-efficient, red = high EUI. Gold glow on rooftop = building is generating significant solar PV.
-
----
-
-## Minimal working example A — grid test scene (offline)
-
-`input/config.json`:
-
-```json
-{
-  "world": "grid",
-  "seed": 20260612,
-  "start_hour": 9,
-  "tick_hz": 10,
-  "sim_min_per_sec": 1.0
-}
-```
-
-`input/grid.json`:
-
-```json
-{
-  "name": "Grid City · Test Block",
-  "radius_m": 100,
-  "n_cars": 1,
-  "n_people": 1,
-  "car_speed_mps": [6.0, 9.0],
-  "person_speed_mps": [1.1, 1.7],
-  "buildings": [
-    { "name": "Test Block A", "type": "office", "floors": 4,
-      "polygon": [[-12, -38], [12, -38], [12, -14], [-12, -14]] }
-  ],
-  "roads": [
-    { "name": "Main Street", "class": "residential",
-      "points": [[-80, 0], [-40, 0], [0, 0], [40, 0], [80, 0]] }
-  ],
-  "lamps": [[0, 5.0]],
-  "signals": []
-}
-```
-
-Run `uvicorn backend.main:app --reload` — one building, one road, one car, one walker, one lamp.
-
-Coordinates are meters (`x` east, `y` south); shared road endpoints merge into one graph node,
-so roads connect. Building `type` must be one of: `res`, `office`, `shop`, `hospital`, `school`, `industrial`.
-
----
-
-## Minimal working example B — real Cambridge map (needs internet once)
-
-Set `"world": "map"` in `input/config.json`. The first start downloads the OSM area once
-via the Overpass API and caches it to `backend/data/<cache_file>`; after that it runs offline.
-
-`input/map.json`:
-
-```json
-{
-  "name": "Cambridge · Market Square",
-  "center": [52.2055, 0.1187],
-  "radius_m": 250,
-  "cache_file": "cambridge_market_square.json",
-  "n_cars": 8,
-  "n_people": 15,
-  "car_speed_mps": [6.0, 9.0],
-  "person_speed_mps": [1.1, 1.7]
-}
-```
-
----
-
-## API
+## 🔌 API
 
 | Route | Returns |
 |---|---|
-| `GET /api/world` | Static layout: building polygons, roads, lamps, parks; includes `world_rev` |
-| `GET /api/state` | Dynamic snapshot: clock, positions, total load/CO₂/PV, EUI per building, `world_rev` |
-| `POST /api/edit` | Apply an edit command (see below); bumps `world_rev` |
-| `GET /api/building/{id}` | 24 h energy history + current kW, CO₂, PV, indoor temp, occupancy |
-| `GET /api/car/{id}` | Speed history (last 60 s) + distance |
-| `GET /api/person/{id}` | Steps/hour history (24 h) + distance |
-| `POST /api/scenario` | Before/after retrofit comparison (see below); stateless, does not touch the live sim |
-| `GET /api/export/buildings.csv` | Current per-building EUI / CO₂ / PV snapshot as a downloadable CSV |
-| `POST /api/export/scenario.csv` | Per-building before/after/delta retrofit comparison as a downloadable CSV |
+| `GET /api/world` | Static layout: building polygons, roads, parks, water (+ `world_rev`) |
+| `GET /api/state` | Live snapshot: clock, positions, totals, per-building EUI (+ `world_rev`) |
+| `POST /api/edit` | Apply one edit command (bumps `world_rev`) |
+| `GET /api/building/{id}` | 24 h load history + current kW, CO₂, PV, indoor temp, occupancy |
+| `GET /api/car/{id}` · `GET /api/person/{id}` | Agent telemetry (speed / steps) + distance |
+| `POST /api/scenario` | Before/after retrofit comparison — stateless, never touches the live sim |
+| `POST /api/load_city` | Rebuild the world for any lat/lon |
+| `GET /api/export/buildings.csv` · `POST /api/export/scenario.csv` | Downloadable CSV exports |
 
----
+## 📚 Documentation
 
-## Editing
+| Doc | What's inside |
+|---|---|
+| [Energy Model](docs/energy-model.md) | The 1C RC physics, envelope UA, solar/internal gains, HVAC, PV, CO₂, constants & sources |
+| [Architecture & Data Flow](docs/architecture.md) | Server-authoritative design, tick loop, API surface, the no-build frontend |
+| [The City & Agent Simulation](docs/simulation.md) | OSM world building, the street-graph random walk, weather, live edits |
+| [Retrofit Scenario Analysis](docs/retrofit-scenarios.md) | The design-day before/after method, measures, targeting, cost & payback |
+| [Modeling Scope & Limitations](docs/modeling-scope.md) | What's modeled vs. deliberately simplified, and why |
 
-Every accepted edit bumps `world_rev`; the frontend refetches `/api/world` when it sees
-the revision change. Edits are in-memory (restart reloads `input/`).
+## 🛣️ Roadmap
 
-| Op | Args | Description |
-|---|---|---|
-| `set_floors` | `id, floors` | Change building height; energy model updates live |
-| `spawn_car` | `x?, y?` | Arm **+ Car**, click map; spawns on nearest road node |
-| `spawn_person` | `x?, y?` | Arm **+ Person**, click map |
-| `remove_car` / `remove_person` | `id` | Click entity → **Remove** in popup |
-| `add_road` | `points, class?, name?` | Arm **+ Road**, drag on map (10 m snap grid) |
-| `add_building` | `polygon, type?, floors?, name?` | Arm **+ Bldg**, pick type, drag footprint |
-| `remove_building` | `id` | **Doze** click or popup **Remove** |
-| `remove_road` | `id` | Arm **Doze**, hover to preview, click to bulldoze |
-| `set_speed` | `sim_min_per_sec` | Speed buttons (1× / 10× / 60× / 360×) |
-| `seek_time` | `clock_min` | Time slider drag — pauses, seeks, then resumes |
+Directions under consideration — each chosen to fit the real-time sandbox (closed-form, recomputes per tick). See [Modeling Scope](docs/modeling-scope.md).
 
----
+- [ ] **Per-carrier emissions + supply types** — distinguish gas / heat-pump / district so fuel-switching shows real CO₂ savings
+- [ ] **Domestic hot water (DHW)** as a first-class end-use
+- [ ] **Ventilation + infiltration** heat-loss term in the RC balance
+- [ ] **Temperature-dependent heat-pump COP** driven by the live outdoor temperature
+- [ ] **Embodied carbon + discounted payback** in the retrofit panel (carbon payback year)
+- [ ] **Construction-vintage archetypes** (a 1960 vs. 2020 building differ) and tilt/temperature-aware PV
 
-## Scenario comparison — retrofit before vs. after
+## 🧱 Project layout
 
-The **📊 Retrofit Scenario** panel (in the HUD) compares the whole city *before* and
-*after* a retrofit, side by side. Because the energy model in `backend/energy.py` is
-pure and parameterised (`Params` / `base_params(btype)`), this needs **no second live
-simulation**: each building's 24 h day is replayed once under baseline parameters and
-once under the retrofitted parameters, then the daily totals are diffed.
-
-A scenario is a set of **city-wide measures** — multipliers on the energy parameters:
-
-| Measure | Param scaled | Improving direction |
-|---|---|---|
-| `u_wall`, `u_roof`, `u_win` | wall / roof / window U-value | factor `< 1` (better insulation) |
-| `g_win`, `win_wall` | glazing solar gain, window-to-wall ratio | factor `< 1` |
-| `lpd` | lighting power density (LED) | factor `< 1` |
-| `e_density` | appliance power density | factor `< 1` |
-| `cop` | heating **and** cooling COP | factor `> 1` (efficient heat pump) |
-| `pv_fraction` | usable roof fraction for PV | factor `> 1` (more panels) |
-| `t_heat_delta`, `t_cool_delta` | setpoint setback [°C] | added to the setpoint |
-
-A scenario can be **targeted** at a subset of buildings (`target`), and priced against
-an electricity `tariff` for a simple payback:
-
-```bash
-curl -X POST localhost:8000/api/scenario -H 'Content-Type: application/json' \
-  -d '{"measures": {"u_wall": 0.5, "u_win": 0.5, "lpd": 0.45, "cop": 1.6, "pv_fraction": 2.5},
-       "target": {"types": ["res"]}, "tariff": 0.28}'
+```
+turbo-city/
+├── input/         # All run config (config.json, map.json, grid.json) — no world facts hard-coded
+├── backend/       # FastAPI app, simulation core, energy model, OSM/grid worlds, weather
+├── frontend/      # Zero-build client: index.html + css/ + native ES modules in js/
+└── docs/          # Theory & architecture docs (+ assets/)
 ```
 
-`target` is `{"types": [...]}`, `{"ids": [...]}`, or omitted (whole city). The headline
-`baseline` / `retrofit` / `delta` totals cover **the selected set** (so targeting "all
-residential" isn't diluted by untouched buildings), alongside:
+A full module-by-module map is in [Architecture & Data Flow](docs/architecture.md).
 
-- `profile_kw` — the 24 h city load curve for each case (drives the overlay chart)
-- `cost` — indicative `capex`, `annual_savings`, `payback_years`, and `annual_co2_t_saved`
-  (capex from per-measure £/m² figures in `scenario.MEASURE_COST`; **edit for a real cost book**)
-- `buildings` — per-building rows with an `in_scope` flag and `delta_pct` (drives the map overlay and CSV)
+## 🙏 Built on
 
-The comparison runs on a **deterministic design day** (synthetic outdoor-temperature
-profile, unit weather multipliers) so it is reproducible and reflects only the retrofit —
-the live simulation keeps running untouched.
+- **[OpenStreetMap](https://www.openstreetmap.org/)** contributors (via the Overpass API) — the world geometry
+- **[Open-Meteo](https://open-meteo.com/)** — live weather
+- **ISO 13790** & **SIA 2044** — the single-zone thermal method
+- **[FastAPI](https://fastapi.tiangolo.com/)** + **[Uvicorn](https://www.uvicorn.org/)** — the async backend
 
-In the **📊 Retrofit Scenario** panel you can pick the target, drag measure sliders (or use
-the Light / Deep presets), watch the headline EUI and per-day table update, see the baseline
-vs. retrofit load curves overlaid, read the capex / payback, toggle **Show savings on map**
-(rooftops recoloured green→red by each building's % energy cut), and export the per-building
-comparison as CSV.
+## 📄 License
 
----
-
-## Adding a new UI panel
-
-Every future panel follows the same four-step pattern:
-
-1. Create `frontend/js/ui/<panel>.js` — import `appState` from `../state.js`, export `setup<Panel>()`
-2. Add the HTML stub (`<div id="panel" class="panel">`) to `index.html`
-3. Add the panel's CSS to `frontend/css/main.css`
-4. Add two lines to `frontend/js/app.js`:
-   ```js
-   import { setupPanel } from './ui/<panel>.js';
-   setupPanel();
-   ```
-
-No other file needs to change.
-
----
-
-## Current simplifications
-
-- Traffic signals are rendered with cycling lights but cars do not stop at them.
-- Agents random-walk (no destination routing).
-- Edits are in-memory; restart reloads `input/` and discards runtime changes.
-- PV self-consumption and battery storage not yet modelled.
+Released under the [MIT License](LICENSE).

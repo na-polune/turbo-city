@@ -1,0 +1,51 @@
+<svg viewBox="0 0 440 340" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Roboto, system-ui, sans-serif" role="img" aria-label="EUI heat-map: rooftops shaded green to red by energy use intensity">
+  <defs>
+    <linearGradient id="euiScale" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#5fd4a8"/>
+      <stop offset="50%" stop-color="#ffc94d"/>
+      <stop offset="100%" stop-color="#e24b4a"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="440" height="340" rx="16" fill="#0d1222" stroke="#ffffff" stroke-opacity="0.14"/>
+  <text x="20" y="32" fill="#eef2fa" font-size="16" font-weight="600">EUI heat-map</text>
+  <text x="20" y="51" fill="#aab4cc" font-size="12">Rooftops shaded by energy-use intensity</text>
+  <line x1="20" y1="63" x2="420" y2="63" stroke="#ffffff" stroke-opacity="0.08"/>
+
+  <!-- mini map scene -->
+  <rect x="20" y="76" width="400" height="186" rx="10" fill="#16331f"/>
+  <!-- streets -->
+  <g stroke="#0f2417" stroke-width="7" stroke-linecap="round">
+    <line x1="20" y1="150" x2="420" y2="150"/>
+    <line x1="170" y1="76" x2="170" y2="262"/>
+    <line x1="300" y1="76" x2="300" y2="262"/>
+  </g>
+  <!-- water -->
+  <rect x="350" y="200" width="70" height="62" rx="8" fill="#27506a"/>
+  <!-- buildings, colored by EUI -->
+  <g stroke="#0b1126" stroke-width="1">
+    <rect x="40"  y="92"  width="44" height="40" rx="3" fill="#63c45a"/>
+    <rect x="96"  y="96"  width="50" height="40" rx="3" fill="#9bc34b"/>
+    <rect x="186" y="90"  width="46" height="44" rx="3" fill="#ffc94d"/>
+    <rect x="244" y="98"  width="44" height="36" rx="3" fill="#f0a73a"/>
+    <rect x="316" y="92"  width="48" height="42" rx="3" fill="#e57b3a"/>
+    <rect x="44"  y="168" width="48" height="44" rx="3" fill="#8cc24e"/>
+    <rect x="104" y="172" width="42" height="40" rx="3" fill="#e24b4a"/>
+    <rect x="188" y="166" width="46" height="46" rx="3" fill="#f06b40"/>
+    <rect x="246" y="172" width="44" height="40" rx="3" fill="#ffc94d"/>
+    <rect x="316" y="170" width="22" height="22" rx="3" fill="#63c45a"/>
+  </g>
+  <!-- PV gold rims -->
+  <g fill="none" stroke="#ffd66b" stroke-width="2.5">
+    <rect x="40" y="92"  width="44" height="40" rx="3"/>
+    <rect x="246" y="172" width="44" height="40" rx="3"/>
+  </g>
+
+  <!-- legend -->
+  <g transform="translate(20,288)">
+    <rect x="0" y="0" width="400" height="12" rx="6" fill="url(#euiScale)"/>
+    <text x="0" y="32" fill="#aab4cc" font-size="11">Efficient</text>
+    <text x="178" y="32" fill="#7f8aa6" font-size="11">gold rim = generating PV</text>
+    <text x="400" y="32" fill="#aab4cc" font-size="11" text-anchor="end">High EUI</text>
+  </g>
+</svg>

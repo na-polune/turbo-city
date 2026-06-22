@@ -1,0 +1,52 @@
+<svg viewBox="0 0 440 340" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Roboto, system-ui, sans-serif" role="img" aria-label="Retrofit scenario: before versus after comparison with payback">
+  <rect x="0" y="0" width="440" height="340" rx="16" fill="#0d1222" stroke="#ffffff" stroke-opacity="0.14"/>
+  <text x="20" y="32" fill="#eef2fa" font-size="16" font-weight="600">Retrofit Scenario</text>
+  <text x="20" y="51" fill="#aab4cc" font-size="12">Before vs. after — deterministic design-day recompute</text>
+  <line x1="20" y1="63" x2="420" y2="63" stroke="#ffffff" stroke-opacity="0.08"/>
+
+  <!-- headline: baseline -> retrofit EUI -->
+  <g transform="translate(20,76)">
+    <g>
+      <rect width="150" height="58" rx="9" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.08"/>
+      <rect width="2.5" height="58" fill="#7f8aa6"/>
+      <text x="12" y="20" fill="#7f8aa6" font-size="10" font-weight="600" letter-spacing="0.7">BASELINE EUI</text>
+      <text x="12" y="46" fill="#eef2fa" font-size="22" font-weight="700">210</text>
+    </g>
+    <g transform="translate(160,14)">
+      <rect width="80" height="30" rx="9" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.08"/>
+      <text x="40" y="20" fill="#5fd4a8" font-size="14" font-weight="700" text-anchor="middle">−54%</text>
+    </g>
+    <g transform="translate(250,0)">
+      <rect width="150" height="58" rx="9" fill="#ffc94d" fill-opacity="0.07" stroke="#ffc94d" stroke-opacity="0.22"/>
+      <rect width="2.5" height="58" fill="#ffc94d"/>
+      <text x="12" y="20" fill="#7f8aa6" font-size="10" font-weight="600" letter-spacing="0.7">RETROFIT EUI</text>
+      <text x="12" y="46" fill="#ffc94d" font-size="22" font-weight="700">96</text>
+    </g>
+  </g>
+  <text x="20" y="152" fill="#7f8aa6" font-size="11">kWh/m²·yr · 303 buildings (whole city)</text>
+
+  <!-- comparison bars -->
+  <g transform="translate(20,170)" font-size="11">
+    <text x="0" y="10" fill="#aab4cc">Energy use</text>
+    <rect x="0" y="16" width="400" height="10" rx="5" fill="#ffffff" fill-opacity="0.06"/>
+    <rect x="0" y="16" width="248" height="10" rx="5" fill="#5fd4a8" fill-opacity="0.85"/>
+
+    <text x="0" y="48" fill="#aab4cc">Net grid import</text>
+    <rect x="0" y="54" width="400" height="10" rx="5" fill="#ffffff" fill-opacity="0.06"/>
+    <rect x="0" y="54" width="184" height="10" rx="5" fill="#5fd4a8" fill-opacity="0.85"/>
+
+    <text x="0" y="86" fill="#aab4cc">CO₂ emissions</text>
+    <rect x="0" y="92" width="400" height="10" rx="5" fill="#ffffff" fill-opacity="0.06"/>
+    <rect x="0" y="92" width="212" height="10" rx="5" fill="#5fd4a8" fill-opacity="0.85"/>
+  </g>
+
+  <!-- footer chips -->
+  <g transform="translate(20,288)">
+    <rect width="190" height="34" rx="9" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.08"/>
+    <text x="14" y="22" fill="#aab4cc" font-size="12">Simple payback <tspan fill="#eef2fa" font-weight="600">≈ 7.4 yr</tspan></text>
+    <g transform="translate(210,0)">
+      <rect width="190" height="34" rx="9" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.08"/>
+      <text x="14" y="22" fill="#aab4cc" font-size="12">CO₂ avoided <tspan fill="#5fd4a8" font-weight="600">1,840 t/yr</tspan></text>
+    </g>
+  </g>
+</svg>

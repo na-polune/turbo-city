@@ -1,0 +1,100 @@
+<svg viewBox="0 0 1200 420" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Roboto, system-ui, sans-serif" role="img" aria-label="City Energy Lab — real-time urban building-energy simulation">
+  <defs>
+    <clipPath id="round"><rect x="0" y="0" width="1200" height="420" rx="20"/></clipPath>
+    <radialGradient id="pvGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffc94d" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#ffc94d" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <g clip-path="url(#round)">
+    <rect x="0" y="0" width="1200" height="420" fill="#0a0f24"/>
+    <rect x="0" y="0" width="1200" height="420" fill="#0d1430"/>
+    <rect x="0" y="300" width="1200" height="120" fill="#0b1126"/>
+
+    <!-- sun / PV motif -->
+    <circle cx="980" cy="120" r="120" fill="url(#pvGlow)"/>
+    <circle cx="980" cy="120" r="30" fill="#ffc94d" opacity="0.9"/>
+
+    <!-- skyline -->
+    <g>
+      <rect x="60"  y="232" width="58"  height="88"  fill="#28304e"/>
+      <rect x="128" y="196" width="66"  height="124" fill="#323b5c"/>
+      <rect x="204" y="250" width="50"  height="70"  fill="#2a3350"/>
+      <rect x="264" y="168" width="74"  height="152" fill="#39456b"/>
+      <rect x="348" y="216" width="60"  height="104" fill="#2e3858"/>
+      <rect x="418" y="150" width="80"  height="170" fill="#3f4d77"/>
+      <rect x="508" y="238" width="54"  height="82"  fill="#2a3350"/>
+      <rect x="900" y="244" width="58"  height="76"  fill="#28304e"/>
+      <rect x="966" y="200" width="70"  height="120" fill="#323b5c"/>
+      <rect x="1044" y="232" width="60" height="88"  fill="#2e3858"/>
+      <rect x="1112" y="178" width="64" height="142" fill="#39456b"/>
+
+      <!-- PV rooftops -->
+      <rect x="264" y="160" width="74" height="9" fill="#5fd4a8"/>
+      <rect x="966" y="192" width="70" height="9" fill="#5fd4a8"/>
+      <rect x="418" y="142" width="80" height="9" fill="#ffc94d"/>
+
+      <!-- lit windows -->
+      <g fill="#ffd66b" opacity="0.85">
+        <rect x="140" y="210" width="6" height="8"/><rect x="156" y="210" width="6" height="8"/><rect x="172" y="210" width="6" height="8"/>
+        <rect x="140" y="228" width="6" height="8"/><rect x="172" y="228" width="6" height="8"/>
+        <rect x="278" y="184" width="6" height="8"/><rect x="296" y="184" width="6" height="8"/><rect x="314" y="184" width="6" height="8"/>
+        <rect x="278" y="204" width="6" height="8"/><rect x="314" y="204" width="6" height="8"/>
+        <rect x="434" y="168" width="6" height="8"/><rect x="452" y="168" width="6" height="8"/><rect x="470" y="168" width="6" height="8"/>
+        <rect x="434" y="188" width="6" height="8"/><rect x="470" y="188" width="6" height="8"/>
+      </g>
+      <g fill="#7aa7ff" opacity="0.7">
+        <rect x="980" y="216" width="6" height="8"/><rect x="998" y="216" width="6" height="8"/><rect x="1016" y="216" width="6" height="8"/>
+        <rect x="1128" y="196" width="6" height="8"/><rect x="1146" y="196" width="6" height="8"/>
+      </g>
+
+      <!-- street -->
+      <rect x="0" y="320" width="1200" height="6" fill="#1a2140"/>
+      <g fill="#ffc94d" opacity="0.5">
+        <rect x="80" y="322" width="22" height="2"/><rect x="140" y="322" width="22" height="2"/>
+        <rect x="200" y="322" width="22" height="2"/><rect x="260" y="322" width="22" height="2"/>
+      </g>
+    </g>
+
+    <!-- title block -->
+    <text x="64" y="96" fill="#eef2fa" font-size="52" font-weight="700" letter-spacing="0.5">City Energy Lab</text>
+    <text x="66" y="132" fill="#aab4cc" font-size="20" font-weight="400">Real-time urban building-energy simulation on real OpenStreetMap cities.</text>
+
+    <!-- live chip -->
+    <g transform="translate(66,156)">
+      <rect x="0" y="0" width="186" height="30" rx="15" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.10"/>
+      <circle cx="18" cy="15" r="5" fill="#5fd4a8"/>
+      <text x="33" y="20" fill="#aab4cc" font-size="13" font-weight="600" letter-spacing="0.4">PYTHON BACKEND · LIVE</text>
+    </g>
+
+    <!-- floating metric panel -->
+    <g transform="translate(64,232)">
+      <rect x="0" y="0" width="430" height="150" rx="16" fill="#0d1222" fill-opacity="0.92" stroke="#ffffff" stroke-opacity="0.14"/>
+      <text x="16" y="28" fill="#7f8aa6" font-size="11" font-weight="600" letter-spacing="0.8">CAMBRIDGE · MARKET SQUARE</text>
+      <text x="16" y="58" fill="#eef2fa" font-size="26" font-weight="700">09:31</text>
+      <circle cx="98" cy="50" r="8" fill="#ffc94d" opacity="0.9"/>
+
+      <!-- hero tile -->
+      <g transform="translate(16,74)">
+        <rect x="0" y="0" width="194" height="58" rx="9" fill="#ffc94d" fill-opacity="0.07" stroke="#ffc94d" stroke-opacity="0.22"/>
+        <rect x="0" y="0" width="2.5" height="58" fill="#ffc94d"/>
+        <text x="12" y="22" fill="#7f8aa6" font-size="10" font-weight="600" letter-spacing="0.7">GRID LOAD</text>
+        <text x="12" y="46" fill="#ffc94d" font-size="22" font-weight="700">4.2<tspan font-size="12" fill="#7f8aa6"> MW</tspan></text>
+      </g>
+      <!-- two tiles -->
+      <g transform="translate(220,74)">
+        <rect x="0" y="0" width="194" height="27" rx="8" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.08"/>
+        <rect x="0" y="0" width="2.5" height="27" fill="#ff9d6b"/>
+        <text x="10" y="12" fill="#7f8aa6" font-size="9" font-weight="600" letter-spacing="0.6">CO₂</text>
+        <text x="10" y="23" fill="#eef2fa" font-size="13" font-weight="600">977<tspan font-size="10" fill="#7f8aa6"> kg/h</tspan></text>
+      </g>
+      <g transform="translate(220,105)">
+        <rect x="0" y="0" width="194" height="27" rx="8" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.08"/>
+        <rect x="0" y="0" width="2.5" height="27" fill="#5fd4a8"/>
+        <text x="10" y="12" fill="#7f8aa6" font-size="9" font-weight="600" letter-spacing="0.6">SOLAR PV</text>
+        <text x="10" y="23" fill="#eef2fa" font-size="13" font-weight="600">682<tspan font-size="10" fill="#7f8aa6"> kW</tspan></text>
+      </g>
+    </g>
+  </g>
+</svg>
