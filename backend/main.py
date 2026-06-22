@@ -41,6 +41,22 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="City Energy Analysis", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def revalidate_static(request, call_next):
+    """Force the browser to revalidate static assets every load.
+
+    The frontend is unbundled native ES modules with no version hashing, so a
+    stale cached module (e.g. an old one missing a newly-added export) silently
+    breaks `import` resolution for the whole app. `no-cache` keeps the cache but
+    requires an ETag revalidation each load — cheap (304s) and skew-proof.
+    """
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith((".js", ".css", ".html")):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 def or_404(detail):
     if detail is None:
         raise HTTPException(status_code=404, detail="Unknown entity id")
@@ -101,17 +117,45 @@ async def export_buildings_csv():
 
 @app.post("/api/scenario")
 async def scenario_compare(body: dict):
-    """Before/after retrofit comparison (city-wide measure multipliers).
+    """Before/after retrofit comparison (city-wide or targeted measures).
 
     Stateless analytical recompute over a deterministic design day — does not
     touch or pause the live simulation. Body: {"measures": {"u_wall": 0.5,
-    "lpd": 0.5, "cop": 1.5, ...}}; see scenario.MULTIPLIER_MEASURES.
+    "lpd": 0.5, "cop": 1.5, ...}, "target": {"types": ["res"]}, "tariff": 0.28}.
+    See scenario.MULTIPLIER_MEASURES; target/tariff are optional.
     """
-    measures = body.get("measures") or {}
     try:
-        return scenario.compare(sim.buildings, measures)
+        return scenario.compare(sim.buildings, body.get("measures") or {},
+                                body.get("target"), body.get("tariff"))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/export/scenario.csv")
+async def export_scenario_csv(body: dict):
+    """Per-building before/after/delta retrofit comparison as a downloadable CSV."""
+    try:
+        result = scenario.compare(sim.buildings, body.get("measures") or {},
+                                  body.get("target"), body.get("tariff"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    cols = ["id", "name", "type", "floors", "area_m2", "in_scope",
+            "baseline_energy_kwh_day", "retrofit_energy_kwh_day", "delta_pct",
+            "baseline_co2_kg_day", "retrofit_co2_kg_day",
+            "baseline_pv_kwh_day", "retrofit_pv_kwh_day",
+            "baseline_eui_kwh_m2_yr", "retrofit_eui_kwh_m2_yr"]
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(cols)
+    for r in result["buildings"]:
+        b, a = r["baseline"], r["retrofit"]
+        w.writerow([r["id"], r["name"], r["type"], r["floors"], r["area_m2"], r["in_scope"],
+                    b["energy_kwh"], a["energy_kwh"], r["delta_pct"],
+                    b["co2_kg"], a["co2_kg"], b["pv_kwh"], a["pv_kwh"],
+                    b["eui_kwh_m2_yr"], a["eui_kwh_m2_yr"]])
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", sim.world_data["name"]).strip("-").lower() or "city"
+    return Response(buf.getvalue().encode("utf-8-sig"), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="retrofit_{slug}.csv"'})
 
 
 @app.post("/api/load_city")

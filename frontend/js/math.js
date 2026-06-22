@@ -34,6 +34,13 @@ export function euiColor(norm) {
   return lerpColor('#facc15', '#ef4444', (norm - 0.5) * 2);
 }
 
+// Retrofit-savings ramp: norm in [-1, 1]. Positive (energy cut) → green,
+// negative (worse) → red, 0 → neutral slate.
+export function savingsColor(norm) {
+  if (norm >= 0) return lerpColor('#5b6b80', '#22c55e', clamp(norm, 0, 1));
+  return lerpColor('#5b6b80', '#ef4444', clamp(-norm, 0, 1));
+}
+
 export function nightFactor(clockMin) {
   const h = ((clockMin % 1440) + 1440) % 1440 / 60;
   if (h >= 7 && h < 17)  return 0;

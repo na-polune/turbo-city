@@ -7,6 +7,8 @@ export const appState = {
   prev: null,
   euiMap: {},
   euiOverlay: false,
+  scenarioOverlay: false,
+  scenarioMap: {},      // building id -> { norm: -1..1, in_scope }
   tool: null,
   bldgType: 'res',
   openKind: null,

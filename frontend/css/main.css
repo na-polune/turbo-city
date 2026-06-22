@@ -163,7 +163,33 @@ html, body{ margin:0; padding:0; height:100%; overflow:hidden;
 .scenDelta.good, .scenArrow.good{ color:var(--accent2); }
 .scenDelta.bad, .scenArrow.bad{ color:#ff8f8f; }
 .scenDelta.flat, .scenArrow.flat{ color:var(--text-dim); }
-.scenErr{ font-size:12px; color:#ffb4b4; }
+.scenErr{ font-size:12px; color:#ffb4b4; padding:6px 0; }
+
+.scenSelectRow{ display:flex; justify-content:space-between; align-items:center; gap:8px;
+  font-size:12px; color:var(--text-dim); margin-bottom:10px; }
+.scenSelectRow select, .scenSelectRow input{ background:rgba(255,255,255,0.07);
+  border:1px solid var(--glass-border); color:var(--text); border-radius:7px;
+  padding:4px 7px; font:inherit; font-size:12px; outline:none; }
+.scenSelectRow select{ flex:1; cursor:pointer; }
+.scenSelectRow input{ width:84px; text-align:right; font-variant-numeric:tabular-nums; }
+.scenSelectRow select:focus, .scenSelectRow input:focus{ border-color:rgba(255,255,255,0.32); }
+
+#scenarioChart{ width:100%; height:150px; display:block; margin:12px 0 4px;
+  border-radius:8px; background:rgba(8,12,28,0.6); }
+
+#scenarioCost{ margin-top:4px; }
+#scenarioCost:not(:empty){ border-top:1px solid var(--glass-border); padding-top:8px; margin-top:10px; }
+.scenCostRow{ display:flex; justify-content:space-between; font-size:12px;
+  color:var(--text-dim); padding:2px 0; }
+.scenCostRow b{ color:var(--text); font-variant-numeric:tabular-nums; }
+
+#scenarioFoot{ display:flex; justify-content:space-between; align-items:center; gap:8px;
+  margin-top:12px; border-top:1px solid var(--glass-border); padding-top:10px; }
+.scenMapToggle{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-dim); cursor:pointer; }
+.scenMapToggle input{ cursor:pointer; }
+#scenarioExport{ border:1px solid var(--glass-border); background:rgba(255,255,255,0.06);
+  color:var(--text-dim); font:inherit; font-size:12px; padding:5px 12px; border-radius:8px; cursor:pointer; }
+#scenarioExport:hover{ color:var(--text); background:rgba(255,255,255,0.12); }
 
 /* City loader panel */
 #cityPanel { top:80px; right:16px; width:260px; z-index:25; }

@@ -1,6 +1,6 @@
 import { cam, viewport } from './camera.js';
 import { HW, HH, FLOOR_H } from './config.js';
-import { lerp, clamp, lerpColor, shade, mulberry32, nightFactor, euiColor, isoX, isoY } from './math.js';
+import { lerp, clamp, lerpColor, shade, mulberry32, nightFactor, euiColor, savingsColor, isoX, isoY } from './math.js';
 import { appState, frameState } from './state.js';
 import { ground } from './world-prep.js';
 import { updateHUD } from './ui/hud.js';
@@ -30,7 +30,13 @@ function drawBuilding(b, withWindows) {
   ctx.beginPath();
   b.iso.forEach(([x, y], i) => i ? ctx.lineTo(x, y - lift) : ctx.moveTo(x, y - lift));
   ctx.closePath();
-  if (appState.euiOverlay && appState.euiMap[b.id] != null) {
+  const scen = appState.scenarioOverlay ? appState.scenarioMap[b.id] : null;
+  if (scen) {
+    ctx.fillStyle = scen.in_scope ? savingsColor(scen.norm) : 'rgba(40,48,62,0.9)';
+    ctx.globalAlpha = scen.in_scope ? 0.9 : 0.55;
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+  } else if (appState.euiOverlay && appState.euiMap[b.id] != null) {
     ctx.fillStyle = euiColor(appState.euiMap[b.id].eui_norm);
     ctx.globalAlpha = 0.85;
     ctx.fill();

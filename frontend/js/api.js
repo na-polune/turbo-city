@@ -86,17 +86,39 @@ export function sendSeek(clockMin) {
   }).catch(() => {});
 }
 
-export async function runScenario(measures) {
+export async function runScenario(measures, target, tariff) {
   const r = await fetch('/api/scenario', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ measures }),
+    body: JSON.stringify({ measures, target, tariff }),
   });
   if (!r.ok) {
     const e = await r.json().catch(() => null);
     throw new Error(e && e.detail ? e.detail : 'scenario failed');
   }
   return r.json();
+}
+
+export async function exportScenarioCsv(measures, target, tariff) {
+  const r = await fetch('/api/export/scenario.csv', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ measures, target, tariff }),
+  });
+  if (!r.ok) {
+    const e = await r.json().catch(() => null);
+    throw new Error(e && e.detail ? e.detail : 'export failed');
+  }
+  const blob = await r.blob();
+  const cd = r.headers.get('Content-Disposition') || '';
+  const match = /filename="?([^"]+)"?/.exec(cd);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = match ? match[1] : 'retrofit.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
 }
 
 export async function loadCity(lat, lon, radius_m, name) {

@@ -89,10 +89,19 @@
 <div id="scenarioPanel" class="panel" role="dialog" aria-labelledby="scenarioTitle" style="display:none">
   <button class="close" id="scenarioClose" aria-label="Close">✕</button>
   <h2 id="scenarioTitle">Retrofit Scenario</h2>
-  <p class="sub">Before vs. after, city-wide. Deterministic design-day recompute — the live simulation keeps running.</p>
+  <p class="sub">Before vs. after. Deterministic design-day recompute — the live simulation keeps running.</p>
   <div id="scenarioPresets"></div>
+  <label class="scenSelectRow">Apply to <select id="scenarioTarget"></select></label>
   <div id="scenarioMeasures"></div>
   <div id="scenarioResults"></div>
+  <canvas id="scenarioChart" width="640" height="300"></canvas>
+  <label class="scenSelectRow">Electricity tariff (£/kWh)
+    <input id="scenarioTariff" type="number" min="0" max="100" step="0.01" value="0.28"></label>
+  <div id="scenarioCost"></div>
+  <div id="scenarioFoot">
+    <label class="scenMapToggle"><input type="checkbox" id="scenarioMapToggle"> Show savings on map</label>
+    <button id="scenarioExport" title="Download per-building before/after CSV">⬇ CSV</button>
+  </div>
 </div>
 
 <div id="toast" class="panel"><span class="dot"></span><span>Drag to pan, scroll to zoom. Click any <b>building</b>, <b>car</b> or <b>person</b>; results come from the Python backend.</span></div>

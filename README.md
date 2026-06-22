@@ -197,6 +197,7 @@ via the Overpass API and caches it to `backend/data/<cache_file>`; after that it
 | `GET /api/person/{id}` | Steps/hour history (24 h) + distance |
 | `POST /api/scenario` | Before/after retrofit comparison (see below); stateless, does not touch the live sim |
 | `GET /api/export/buildings.csv` | Current per-building EUI / CO₂ / PV snapshot as a downloadable CSV |
+| `POST /api/export/scenario.csv` | Per-building before/after/delta retrofit comparison as a downloadable CSV |
 
 ---
 
@@ -240,16 +241,33 @@ A scenario is a set of **city-wide measures** — multipliers on the energy para
 | `pv_fraction` | usable roof fraction for PV | factor `> 1` (more panels) |
 | `t_heat_delta`, `t_cool_delta` | setpoint setback [°C] | added to the setpoint |
 
+A scenario can be **targeted** at a subset of buildings (`target`), and priced against
+an electricity `tariff` for a simple payback:
+
 ```bash
 curl -X POST localhost:8000/api/scenario -H 'Content-Type: application/json' \
-  -d '{"measures": {"u_wall": 0.5, "u_win": 0.5, "lpd": 0.45, "cop": 1.6, "pv_fraction": 2.5}}'
+  -d '{"measures": {"u_wall": 0.5, "u_win": 0.5, "lpd": 0.45, "cop": 1.6, "pv_fraction": 2.5},
+       "target": {"types": ["res"]}, "tariff": 0.28}'
 ```
 
-Returns city totals for `baseline` and `retrofit` (daily energy, HVAC/lighting/appliance
-split, PV, net grid, CO₂, and floor-area-weighted EUI), the per-metric `delta` (absolute
-and %), and per-building rows. The comparison runs on a **deterministic design day**
-(synthetic outdoor-temperature profile, unit weather multipliers) so it is reproducible
-and reflects only the retrofit — the live simulation keeps running untouched.
+`target` is `{"types": [...]}`, `{"ids": [...]}`, or omitted (whole city). The headline
+`baseline` / `retrofit` / `delta` totals cover **the selected set** (so targeting "all
+residential" isn't diluted by untouched buildings), alongside:
+
+- `profile_kw` — the 24 h city load curve for each case (drives the overlay chart)
+- `cost` — indicative `capex`, `annual_savings`, `payback_years`, and `annual_co2_t_saved`
+  (capex from per-measure £/m² figures in `scenario.MEASURE_COST`; **edit for a real cost book**)
+- `buildings` — per-building rows with an `in_scope` flag and `delta_pct` (drives the map overlay and CSV)
+
+The comparison runs on a **deterministic design day** (synthetic outdoor-temperature
+profile, unit weather multipliers) so it is reproducible and reflects only the retrofit —
+the live simulation keeps running untouched.
+
+In the **📊 Retrofit Scenario** panel you can pick the target, drag measure sliders (or use
+the Light / Deep presets), watch the headline EUI and per-day table update, see the baseline
+vs. retrofit load curves overlaid, read the capex / payback, toggle **Show savings on map**
+(rooftops recoloured green→red by each building's % energy cut), and export the per-building
+comparison as CSV.
 
 ---
 
