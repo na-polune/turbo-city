@@ -38,23 +38,17 @@ It's a **sandbox**, not a batch tool: the entire city recomputes every tick whil
 
 <table>
   <tr>
-    <td width="50%" valign="top">
+    <td width="33%" valign="top">
       <img src="docs/assets/ui-building.svg" alt="Building detail panel" width="100%"><br>
       <sub><b>Building detail</b> — live metric tiles + a 24 h load chart for any building you click.</sub>
     </td>
-    <td width="50%" valign="top">
+    <td width="33%" valign="top">
       <img src="docs/assets/ui-retrofit.svg" alt="Retrofit scenario panel" width="100%"><br>
       <sub><b>Retrofit scenario</b> — whole-city before vs. after, with energy, CO₂ and payback.</sub>
     </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
+    <td width="33%" valign="top">
       <img src="docs/assets/ui-eui.svg" alt="EUI heat-map" width="100%"><br>
       <sub><b>EUI heat-map</b> — efficiency at a glance across the whole city.</sub>
-    </td>
-    <td width="50%" valign="top">
-      <br>
-      <sub>The panels above mirror the live UI. To drop in real screenshots of your own city, see <a href="docs/assets/README.md">docs/assets/README.md</a>.</sub>
     </td>
   </tr>
 </table>
