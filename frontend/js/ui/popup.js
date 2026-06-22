@@ -5,8 +5,10 @@ import { flashToast } from './toast.js';
 
 const popup = document.getElementById('popup');
 const chart = document.getElementById('chart');
+const nowGrid = document.getElementById('popupNow');
 let curFloors = null;
 let refreshTimer = null;
+let gridKind = '';
 
 export function setupPopup() {
   document.getElementById('popupClose').addEventListener('click', closePopup);
@@ -47,7 +49,6 @@ export async function refreshDetail() {
   popup.classList.toggle('editable', appState.openKind === 'building');
   popup.classList.add('removable');
   const sub = document.getElementById('popupSub');
-  const nowEl = document.getElementById('popupNow');
   if (appState.openKind === 'building') {
     curFloors = d.floors;
     document.getElementById('floorVal').textContent = d.floors;
@@ -58,8 +59,15 @@ export async function refreshDetail() {
       yStep: 50, color: '#ffc94d', fill: 'rgba(255,201,77,0.16)',
       xTicks: timeTicks((d.history_kw.length - 1) * d.sample_min, 6),
     });
-    const pvStr = d.pv_kw > 0.1 ? ` · ☀️ PV ${d.pv_kw.toFixed(1)} kW` : '';
-    nowEl.innerHTML = `Now: <b>${Math.round(d.load_kw)}</b> kW${pvStr} · ${d.co2_kg_h.toFixed(1)} kg CO₂/h · T<sub>in</sub> ${d.t_in_c}°C / T<sub>out</sub> ${d.t_out_c}°C · occ ${Math.round(d.occupancy * 100)}%`;
+    const occ = Math.round(d.occupancy * 100);
+    renderTiles('building', [
+      { k: 'Power now', v: Math.round(d.load_kw), u: 'kW', tick: 'accent', hero: true },
+      { k: 'Solar PV', v: d.pv_kw.toFixed(1), u: 'kW', tick: 'accent2', hidden: d.pv_kw <= 0.1 },
+      { k: 'CO₂', v: d.co2_kg_h.toFixed(1), u: 'kg/h', tick: 'warm' },
+      { k: 'Indoor', v: d.t_in_c, u: '°C', tick: 'cool' },
+      { k: 'Outdoor', v: d.t_out_c, u: '°C', tick: 'warm' },
+      { k: 'Occupancy', v: occ, u: '%', tick: 'mute', wide: true, bar: occ },
+    ]);
   } else if (appState.openKind === 'car') {
     sub.textContent = 'Vehicle telemetry — speed, last 60 s';
     renderChart(chart, d.history_kmh, {
@@ -67,15 +75,54 @@ export async function refreshDetail() {
       color: '#5fd4a8', fill: 'rgba(95,212,168,0.16)',
       xTicks: secTicks(d.capacity * d.sample_dt_s, 4),
     });
-    nowEl.innerHTML = `Now: <b>${Math.round(d.speed_kmh)}</b> km/h · ${d.distance_km_today} km driven`;
+    renderTiles('car', [
+      { k: 'Speed', v: Math.round(d.speed_kmh), u: 'km/h', tick: 'accent', hero: true },
+      { k: 'Driven today', v: d.distance_km_today, u: 'km', tick: 'accent2', wide: true },
+    ]);
   } else {
     sub.textContent = 'Citizen activity — steps per hour, last 24 h';
     renderChart(chart, d.history_steps_h, {
       yStep: 1000, yMin: 2000, color: '#7aa7ff', fill: 'rgba(122,167,255,0.16)',
       xTicks: timeTicks((d.history_steps_h.length - 1) * d.sample_min, 6),
     });
-    nowEl.innerHTML = `${d.activity} · <b>${d.steps_per_h.toLocaleString()}</b> steps/h · ${d.distance_km_today} km today`;
+    renderTiles('person', [
+      { k: 'Steps / h', v: d.steps_per_h.toLocaleString(), tick: 'accent', hero: true },
+      { k: 'Activity', v: d.activity, tick: 'accent2' },
+      { k: 'Distance today', v: d.distance_km_today, u: 'km', tick: 'cool' },
+    ]);
   }
+}
+
+// Maps a tile's semantic role to the CSS custom property that colors its left tick.
+const TILE_TICK = { accent: '--accent', accent2: '--accent2', warm: '--warm', cool: '--cool', mute: '--text-mute' };
+
+function tileSkeleton(t) {
+  const cls = 'tile' + (t.hero ? ' tile--hero' : '') + (t.wide ? ' tile--wide' : '');
+  const unit = t.u != null ? '<span class="tile__u"></span>' : '';
+  const bar = t.bar != null ? '<span class="tile__bar"><i></i></span>' : '';
+  return `<div class="${cls}" style="--tick:var(${TILE_TICK[t.tick] || '--text-mute'})">`
+    + `<span class="tile__k">${t.k}</span>`
+    + `<span class="tile__v"><span class="v"></span>${unit}</span>${bar}</div>`;
+}
+
+// Builds the tile skeleton once per entity kind (labels/structure are static),
+// then only writes values on each 2 s refresh — no innerHTML churn, no layout flash.
+function renderTiles(kind, tiles) {
+  if (gridKind !== kind) {
+    nowGrid.innerHTML = tiles.map(tileSkeleton).join('');
+    gridKind = kind;
+  }
+  const els = nowGrid.children;
+  tiles.forEach((t, i) => {
+    const el = els[i];
+    el.querySelector('.v').textContent = t.v;
+    const u = el.querySelector('.tile__u');
+    if (u) u.textContent = t.u;
+    const bar = el.querySelector('.tile__bar i');
+    if (bar) bar.style.width = (t.bar || 0) + '%';
+    el.classList.toggle('tile--hidden', !!t.hidden);
+    el.classList.toggle('tile--tight', t.u != null && String(t.v).length > 5);
+  });
 }
 
 async function nudgeFloors(delta) {

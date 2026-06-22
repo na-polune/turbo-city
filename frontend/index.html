@@ -15,12 +15,14 @@
   <h1>City Energy Lab</h1>
   <div class="clock"><span id="clockText">--:--</span><span class="glyph" id="clockGlyph">☀️</span></div>
   <div class="stat" id="weatherRow" style="display:none"><span id="weatherIcon"></span><b id="weatherLabel">–</b></div>
-  <div class="stat"><span>Buildings</span><b id="statBldg">–</b></div>
-  <div class="stat"><span>Vehicles</span><b id="statCars">–</b></div>
-  <div class="stat"><span>People</span><b id="statPop">–</b></div>
-  <div class="stat"><span>Grid load</span><b id="statLoad">–</b></div>
-  <div class="stat"><span>CO₂</span><b id="statCO2">–</b></div>
-  <div class="stat"><span>Solar PV</span><b id="statPV">–</b></div>
+  <div class="metric-grid metric-grid--hud">
+    <div class="tile tile--hero" style="--tick:var(--accent)"><span class="tile__k">Grid load</span><b class="tile__v" id="statLoad">–</b></div>
+    <div class="tile" style="--tick:var(--accent2)"><span class="tile__k">Solar PV</span><b class="tile__v" id="statPV">–</b></div>
+    <div class="tile" style="--tick:var(--warm)"><span class="tile__k">CO₂</span><b class="tile__v" id="statCO2">–</b></div>
+    <div class="tile" style="--tick:var(--text-mute)"><span class="tile__k">Buildings</span><b class="tile__v" id="statBldg">–</b></div>
+    <div class="tile" style="--tick:var(--text-mute)"><span class="tile__k">Vehicles</span><b class="tile__v" id="statCars">–</b></div>
+    <div class="tile tile--wide" style="--tick:var(--text-mute)"><span class="tile__k">People</span><b class="tile__v" id="statPop">–</b></div>
+  </div>
   <div class="tools" id="toolbar">
     <button data-tool="car" title="Arm, then click a road to add a car (Esc to cancel)">+ 🚗 Car</button>
     <button data-tool="person" title="Arm, then click a road to add a person (Esc to cancel)">+ 🚶 Person</button>
@@ -60,7 +62,7 @@
   <h2 id="popupTitle"></h2>
   <p class="sub" id="popupSub"></p>
   <canvas id="chart" width="640" height="360"></canvas>
-  <p id="popupNow"></p>
+  <div id="popupNow" class="metric-grid" aria-label="Live readings"></div>
   <div id="popupEdit">
     <span>Floors</span>
     <button id="floorMinus" aria-label="Remove a floor">−</button>
@@ -78,8 +80,10 @@
   <p class="sub">Enter any location — OSM data will be fetched (first load ~10 s, then cached).</p>
   <form id="cityForm" onsubmit="return false">
     <label>Name<input id="cityName" type="text" placeholder="e.g. Tokyo Station" maxlength="60" autocomplete="off"></label>
-    <label>Latitude<input id="cityLat" type="number" step="any" min="-90" max="90" placeholder="e.g. 35.6812"></label>
-    <label>Longitude<input id="cityLon" type="number" step="any" min="-180" max="180" placeholder="e.g. 139.7671"></label>
+    <div id="cityCoordRow">
+      <label>Latitude<input id="cityLat" type="number" step="any" min="-90" max="90" placeholder="e.g. 35.6812"></label>
+      <label>Longitude<input id="cityLon" type="number" step="any" min="-180" max="180" placeholder="e.g. 139.7671"></label>
+    </div>
     <label>Radius (m)<input id="cityRadius" type="number" min="50" max="2000" step="10" value="250"></label>
     <button id="citySubmit" type="button">Load City</button>
     <p id="cityStatus" aria-live="polite"></p>

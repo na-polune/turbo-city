@@ -166,7 +166,7 @@ function renderResults(r) {
     <div class="scenHeadline">
       <div class="scenHL"><span class="scenHLk">Baseline EUI</span><b>${Math.round(eb)}</b></div>
       <div class="scenArrow ${deltaClass('down', ed.pct)}">${deltaText(ed.pct)}</div>
-      <div class="scenHL"><span class="scenHLk">Retrofit EUI</span><b>${Math.round(ea)}</b></div>
+      <div class="scenHL scenHL--hero"><span class="scenHLk">Retrofit EUI</span><b>${Math.round(ea)}</b></div>
     </div>
     <div class="scenUnit">EUI in kWh/m²·yr · ${scope}</div>`;
   const head = `
@@ -185,7 +185,7 @@ function renderResults(r) {
   }).join('');
   resultsEl.innerHTML = headline + head + rows +
     `<div class="scenUnit">City load over the day —
-       <span style="color:#8090a8">baseline</span> vs <span style="color:#5fd4a8">retrofit</span> (kW)</div>`;
+       <span class="scenLeg-base">baseline</span> vs <span class="scenLeg-after">retrofit</span> (kW)</div>`;
   renderProfile(r);
   renderCost(r);
 }

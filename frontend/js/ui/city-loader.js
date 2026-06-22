@@ -29,16 +29,20 @@ async function submitCity() {
   const name = document.getElementById('cityName').value.trim();
   const status = document.getElementById('cityStatus');
   const btn = document.getElementById('citySubmit');
+  status.classList.remove('err');
 
   if (!isFinite(lat) || lat < -90 || lat > 90) {
+    status.classList.add('err');
     status.textContent = 'Latitude must be −90 to 90.';
     return;
   }
   if (!isFinite(lon) || lon < -180 || lon > 180) {
+    status.classList.add('err');
     status.textContent = 'Longitude must be −180 to 180.';
     return;
   }
   if (radius_m < 50 || radius_m > 2000) {
+    status.classList.add('err');
     status.textContent = 'Radius must be 50–2000 m.';
     return;
   }
@@ -50,6 +54,7 @@ async function submitCity() {
     flashToast('Loaded: ' + result.name);
     closePanel();
   } catch (e) {
+    status.classList.add('err');
     status.textContent = 'Error: ' + e.message;
   } finally {
     btn.disabled = false;
