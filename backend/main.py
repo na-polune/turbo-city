@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
-from . import scenario
+from . import heatmap, scenario
 from .simulation import Simulation
 
 INPUT_DIR = Path(__file__).resolve().parent.parent / "input"
@@ -25,6 +25,12 @@ async def run_simulation():
     loop = asyncio.get_running_loop()
     last = loop.time()
     while True:
+        # Paused (sim_min_per_sec == 0): idle without advancing the world, so a
+        # paused tab costs ~nothing instead of running physics 10x/second.
+        if sim.sim_min_per_sec <= 0:
+            await asyncio.sleep(0.2)
+            last = loop.time()   # don't accumulate a huge dt while paused
+            continue
         await asyncio.sleep(sim.tick_interval)   # tick rate from input/config.json
         now = loop.time()
         sim.tick(min(now - last, 1.0))   # cap dt if the loop stalls
@@ -156,6 +162,18 @@ async def export_scenario_csv(body: dict):
     slug = re.sub(r"[^A-Za-z0-9]+", "-", sim.world_data["name"]).strip("-").lower() or "city"
     return Response(buf.getvalue().encode("utf-8-sig"), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="retrofit_{slug}.csv"'})
+
+
+@app.post("/api/heatmap")
+async def heatmap_analysis():
+    """Overheating heat-map: each building's peak free-floating indoor temperature
+    over today's weather (no active cooling), with wind-driven natural ventilation.
+
+    Stateless and triggered (never on the live clock). Runs off the event loop
+    because it fetches the weather forecast and replays a design day per building.
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, heatmap.compute, sim.buildings, sim.lat, sim.lon)
 
 
 @app.post("/api/load_city")

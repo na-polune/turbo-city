@@ -22,6 +22,7 @@ export async function refreshWorld() {
     const r = await fetch('/api/world');
     appState.world = await r.json();
     prepareWorld();
+    appState.dirty = true;
     document.getElementById('statBldg').textContent = appState.world.buildings.length;
   } catch {} finally { worldRefreshing = false; }
 }
@@ -33,6 +34,7 @@ export async function pollState() {
     s.recvT = performance.now();
     appState.prev = appState.cur || s;
     appState.cur = s;
+    appState.dirty = true;
     if (s.buildings_eui) {
       appState.euiMap = {};
       for (const e of s.buildings_eui) appState.euiMap[e.id] = e;
@@ -42,7 +44,9 @@ export async function pollState() {
   } catch {
     setBackend(false);
   } finally {
-    setTimeout(pollState, POLL_MS);
+    // Poll slowly while paused — the world isn't changing, so there's little to refresh.
+    const paused = appState.cur && appState.cur.sim_min_per_sec === 0;
+    setTimeout(pollState, paused ? 1000 : POLL_MS);
   }
 }
 
@@ -95,6 +99,15 @@ export async function runScenario(measures, target, tariff) {
   if (!r.ok) {
     const e = await r.json().catch(() => null);
     throw new Error(e && e.detail ? e.detail : 'scenario failed');
+  }
+  return r.json();
+}
+
+export async function runHeatmap() {
+  const r = await fetch('/api/heatmap', { method: 'POST' });
+  if (!r.ok) {
+    const e = await r.json().catch(() => null);
+    throw new Error(e && e.detail ? e.detail : 'heat-map analysis failed');
   }
   return r.json();
 }

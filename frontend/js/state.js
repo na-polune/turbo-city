@@ -9,6 +9,10 @@ export const appState = {
   euiOverlay: false,
   scenarioOverlay: false,
   scenarioMap: {},      // building id -> { norm: -1..1, in_scope }
+  heatOverlay: false,
+  heatMap: {},          // building id -> { severity: 0..1, peak_t_in_c, overheat_hours }
+  dirty: true,          // request a redraw (render loop idles when paused + clean)
+  lastInteract: 0,      // performance.now() of last pointer/wheel input
   tool: null,
   bldgType: 'res',
   openKind: null,

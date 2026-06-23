@@ -19,6 +19,7 @@ export function setupInput() {
   canvas.addEventListener('pointercancel', endPointer);
   canvas.addEventListener('wheel', e => {
     e.preventDefault();
+    appState.lastInteract = performance.now();
     zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0012));
   }, { passive: false });
   window.addEventListener('keydown', e => {
@@ -32,6 +33,7 @@ export function setupInput() {
 }
 
 function onPointerDown(e) {
+  appState.lastInteract = performance.now();
   try { canvas.setPointerCapture(e.pointerId); } catch {}
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   moved = 0;
@@ -56,6 +58,7 @@ function onPointerDown(e) {
 }
 
 function onPointerMove(e) {
+  appState.lastInteract = performance.now();
   const p = pointers.get(e.pointerId);
   if (p) {
     moved += Math.abs(e.clientX - p.x) + Math.abs(e.clientY - p.y);

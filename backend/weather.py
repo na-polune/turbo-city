@@ -39,6 +39,37 @@ _OPEN_METEO_URL = (
 )
 _REFRESH_INTERVAL_S = 900   # re-fetch real weather every 15 real minutes
 
+# Hourly forecast for today, used by the heat-map design-day analysis.
+# wind_speed_unit=ms gives metres/second directly.
+_DESIGN_DAY_URL = (
+    'https://api.open-meteo.com/v1/forecast'
+    '?latitude={lat}&longitude={lon}'
+    '&hourly=temperature_2m,wind_speed_10m,cloud_cover'
+    '&wind_speed_unit=ms&forecast_days=1'
+)
+
+
+def fetch_design_day(lat: float, lon: float):
+    """Fetch today's 24 h hourly temperature / wind / cloud for (lat, lon).
+
+    Returns {"temp_c": [24], "wind_ms": [24], "cloud_pct": [24]} indexed by
+    hour 0..23 (local), or None on any error / short response. Blocking network
+    call — run it off the event loop (see main.heatmap_analysis).
+    """
+    try:
+        url = _DESIGN_DAY_URL.format(lat=lat, lon=lon)
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = json.loads(resp.read())
+        h = data['hourly']
+        temp = [float(v) for v in h['temperature_2m'][:24]]
+        wind = [float(v) for v in h['wind_speed_10m'][:24]]
+        cloud = [float(v) for v in h['cloud_cover'][:24]]
+        if len(temp) < 24 or len(wind) < 24 or len(cloud) < 24:
+            return None
+        return {'temp_c': temp, 'wind_ms': wind, 'cloud_pct': cloud}
+    except Exception:
+        return None
+
 
 def _wmo_to_state(code: int, cloud_cover: float, precipitation: float) -> str:
     """Map WMO weather code + current conditions to one of our five states.

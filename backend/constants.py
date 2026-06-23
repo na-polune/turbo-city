@@ -19,7 +19,7 @@ STEPS_PER_M = 1.35   # converts meters walked to step count
 
 # ---- runtime defaults (overridable via input/config.json) ----
 TICK_HZ         = 10
-SIM_MIN_PER_SEC = 1.0   # 1 real second = 1 sim minute → full day in 24 real minutes
+SIM_MIN_PER_SEC = 0     # start paused (press ▶ to run); >0 = sim-minutes per real second
 
 # ---- agent speed fallbacks (overridable per world via input/{map,grid}.json) ----
 CAR_SPEED_MPS    = (6.0, 9.0)   # [min, max] cruising speed, m/s

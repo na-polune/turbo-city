@@ -293,6 +293,7 @@ class Simulation:
         lat, lon = None, None
         if self.mode == 'map' and 'center' in spec:
             lat, lon = spec['center'][0], spec['center'][1]
+        self.lat, self.lon = lat, lon
         self.weather = Weather(self.rng, cfg.get("weather_period_min", 180.0), lat=lat, lon=lon)
 
         w = self.world_data = WORLD_BUILDERS[self.mode](spec, seed)

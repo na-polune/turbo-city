@@ -41,6 +41,11 @@ function drawBuilding(b, withWindows) {
     ctx.globalAlpha = 0.85;
     ctx.fill();
     ctx.globalAlpha = 1.0;
+  } else if (appState.heatOverlay && appState.heatMap[b.id] != null) {
+    ctx.fillStyle = euiColor(appState.heatMap[b.id].severity);
+    ctx.globalAlpha = 0.85;
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
   } else {
     ctx.fillStyle = shade(b.palette[1], 1.18);
     ctx.fill();
@@ -201,6 +206,13 @@ function render(nowMs) {
   requestAnimationFrame(render);
   const { world, cur: curState, roadDraft, bldgDraft } = appState;
   if (!world) return;
+  // When the sim is paused, the world is frozen — only redraw on a fresh state,
+  // a recent interaction, or an in-progress draft. Otherwise leave the last
+  // frame on screen so an idle paused tab stops burning the GPU.
+  const paused = curState && curState.sim_min_per_sec === 0;
+  if (paused && !appState.dirty && !roadDraft && !bldgDraft
+      && nowMs - appState.lastInteract > 600) return;
+  appState.dirty = false;
   const { W, Hh, DPR } = viewport;
   const nowSec = nowMs / 1000;
   nightClockMin = curState ? curState.clock_min : 9 * 60;

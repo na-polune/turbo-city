@@ -42,6 +42,7 @@
   <div class="backend" id="backendBadge"><span class="dot"></span><span id="backendText">connecting…</span></div>
   <button id="exportBtn" title="Download the current per-building EUI / CO₂ / PV analysis as CSV">⬇ Export CSV</button>
   <button id="scenarioBtn" title="Compare the city before vs. after a retrofit (city-wide measures)">📊 Retrofit Scenario</button>
+  <button id="heatBtn" title="Run an overheating heat-map of the city under today's weather">🔥 Heat Map · today</button>
   <button id="changeCityBtn">Change City</button>
   <div id="timeControls">
     <div id="timeSliderRow">
@@ -106,6 +107,25 @@
     <label class="scenMapToggle"><input type="checkbox" id="scenarioMapToggle"> Show savings on map</label>
     <button id="scenarioExport" title="Download per-building before/after CSV">⬇ CSV</button>
   </div>
+</div>
+
+<div id="heatPanel" class="panel" role="dialog" aria-labelledby="heatTitle">
+  <button class="close" id="heatClose" aria-label="Close heat-map">✕</button>
+  <div class="heat-head">
+    <strong id="heatTitle">🔥 Overheating today</strong>
+    <span class="sub" id="heatBasis">—</span>
+  </div>
+  <div class="heat-legend">
+    <span id="heatLegendLo">25°C</span>
+    <span class="heat-bar"></span>
+    <span id="heatLegendHi">33°C+</span>
+  </div>
+  <div class="heat-stats">
+    <span>Hottest <b id="heatMax">–</b></span>
+    <span>Mean peak <b id="heatMean">–</b></span>
+    <span>Over 28°C <b id="heatOver">–</b></span>
+  </div>
+  <span id="heatStatus" class="sub" aria-live="polite"></span>
 </div>
 
 <div id="toast" class="panel"><span class="dot"></span><span>Drag to pan, scroll to zoom. Click any <b>building</b>, <b>car</b> or <b>person</b>; results come from the Python backend.</span></div>
