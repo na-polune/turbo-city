@@ -23,13 +23,16 @@
     <div class="tile" style="--tick:var(--text-mute)"><span class="tile__k">Vehicles</span><b class="tile__v" id="statCars">–</b></div>
     <div class="tile tile--wide" style="--tick:var(--text-mute)"><span class="tile__k">People</span><b class="tile__v" id="statPop">–</b></div>
   </div>
+  <div class="rail-wrap">
+    <span class="rail-label">Map view</span>
+    <div class="info-rail" id="infoRail"></div>
+  </div>
   <div class="tools" id="toolbar">
     <button data-tool="car" title="Arm, then click a road to add a car (Esc to cancel)">+ 🚗 Car</button>
     <button data-tool="person" title="Arm, then click a road to add a person (Esc to cancel)">+ 🚶 Person</button>
     <button data-tool="road" title="Arm, then drag on the map to lay a road (snaps to a 10 m grid)">+ 🛣 Road</button>
     <button data-tool="bldg" title="Pick a type below, then drag a footprint on the map">+ 🏢 Bldg</button>
     <button data-tool="dozer" title="Arm, then click a building or road to bulldoze it">🧨 Doze</button>
-    <button id="euiToggle" title="Toggle EUI heat-map: green=efficient, red=high energy">🌡 EUI</button>
   </div>
   <div class="tools" id="bldgTypes" style="display:none">
     <button data-btype="res" class="active">🏠 Res</button>
@@ -42,7 +45,6 @@
   <div class="backend" id="backendBadge"><span class="dot"></span><span id="backendText">connecting…</span></div>
   <button id="exportBtn" title="Download the current per-building EUI / CO₂ / PV analysis as CSV">⬇ Export CSV</button>
   <button id="scenarioBtn" title="Compare the city before vs. after a retrofit (city-wide measures)">📊 Retrofit Scenario</button>
-  <button id="heatBtn" title="Run an overheating heat-map of the city under today's weather">🔥 Heat Map · today</button>
   <button id="changeCityBtn">Change City</button>
   <div id="timeControls">
     <div id="timeSliderRow">
@@ -109,23 +111,12 @@
   </div>
 </div>
 
-<div id="heatPanel" class="panel" role="dialog" aria-labelledby="heatTitle">
-  <button class="close" id="heatClose" aria-label="Close heat-map">✕</button>
-  <div class="heat-head">
-    <strong id="heatTitle">🔥 Overheating today</strong>
-    <span class="sub" id="heatBasis">—</span>
-  </div>
-  <div class="heat-legend">
-    <span id="heatLegendLo">25°C</span>
-    <span class="heat-bar"></span>
-    <span id="heatLegendHi">33°C+</span>
-  </div>
-  <div class="heat-stats">
-    <span>Hottest <b id="heatMax">–</b></span>
-    <span>Mean peak <b id="heatMean">–</b></span>
-    <span>Over 28°C <b id="heatOver">–</b></span>
-  </div>
-  <span id="heatStatus" class="sub" aria-live="polite"></span>
+<div id="viewLegend" class="panel">
+  <button class="close" id="vlClose" aria-label="Hide overlay">✕</button>
+  <div class="vl-head"><strong id="vlTitle">—</strong><span class="sub" id="vlDetail"></span></div>
+  <div class="vl-tabs" id="vlTabs"></div>
+  <div class="vl-legend"><span id="vlLo"></span><span class="vl-bar" id="vlBar"></span><span id="vlHi"></span></div>
+  <div class="vl-stats" id="vlStats"></div>
 </div>
 
 <div id="toast" class="panel"><span class="dot"></span><span>Drag to pan, scroll to zoom. Click any <b>building</b>, <b>car</b> or <b>person</b>; results come from the Python backend.</span></div>

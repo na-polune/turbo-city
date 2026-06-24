@@ -1,5 +1,6 @@
 import { POLL_MS } from './config.js';
 import { appState } from './state.js';
+import { recomputeActiveView } from './views.js';
 import { prepareWorld } from './world-prep.js';
 import { flashToast } from './ui/toast.js';
 
@@ -35,9 +36,11 @@ export async function pollState() {
     appState.prev = appState.cur || s;
     appState.cur = s;
     appState.dirty = true;
-    if (s.buildings_eui) {
-      appState.euiMap = {};
-      for (const e of s.buildings_eui) appState.euiMap[e.id] = e;
+    if (s.buildings_view) {
+      const vm = {};
+      for (const e of s.buildings_view) vm[e.id] = e;
+      appState.viewMap = vm;
+      recomputeActiveView();   // refresh the active live view against fresh data
     }
     setBackend(true);
     if (appState.world && s.world_rev !== appState.world.world_rev) refreshWorld();

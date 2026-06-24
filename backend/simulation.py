@@ -101,9 +101,9 @@ class Building:
         self.hist_idx = 0
         self.T_in = T_in
         self.load_kw = self.history[-1]
-        self.hvac_kw = hv
-        self.elec_kw = el
-        self.light_kw = li
+        # Populate component / CO₂ / PV fields for the settled "now" hour, so a
+        # paused-at-boot snapshot has complete per-building data, not just load.
+        self.estimate_load((now_min % 1440) / 60.0)
 
     def sample(self, hour, ua_mult=1.0, solar_mult=1.0):
         self.load_kw = self.estimate_load(hour, ua_mult, solar_mult)
@@ -589,11 +589,6 @@ class Simulation:
         }
 
     def state(self):
-        # EUI [W/m² total floor area] per building, normalised 0–1 city-wide
-        euis = [b.eui_w_m2() for b in self.buildings]
-        eui_min = min(euis) if euis else 0.0
-        eui_max = max(euis) if euis else 1.0
-        eui_range = max(1.0, eui_max - eui_min)
         return {
             "world_rev": self.world_rev,
             "clock_min": round(self.clock_min, 2),
@@ -612,12 +607,19 @@ class Simulation:
                 "x": round(p.pos()[0], 2), "y": round(p.pos()[1], 2),
             } for p in self.people],
             "total_pv_kw": round(sum(b.pv_kw for b in self.buildings), 1),
-            "buildings_eui": [{
+            # Per-building scalars for the Info-View overlays. Component loads are
+            # intensities [W/m² of total floor area] so they're comparable across
+            # building sizes; pv [kW] and co2 [kg/h] are absolute. The frontend
+            # normalises whichever field the active view selects.
+            "buildings_view": [{
                 "id": b.id,
-                "eui_norm": round((euis[i] - eui_min) / eui_range, 3),
-                "eui_w_m2": round(euis[i], 1),
-                "pv_kw": round(b.pv_kw, 1),
-            } for i, b in enumerate(self.buildings)],
+                "e_total": round(b.eui_w_m2(), 1),
+                "e_hvac":  round(b.hvac_kw * 1000 / max(1.0, b.area_m2 * b.floors), 1),
+                "e_light": round(b.light_kw * 1000 / max(1.0, b.area_m2 * b.floors), 1),
+                "e_plug":  round(b.elec_kw * 1000 / max(1.0, b.area_m2 * b.floors), 1),
+                "pv":      round(b.pv_kw, 2),
+                "co2":     round(b.co2_kg_h, 2),
+            } for b in self.buildings],
         }
 
     def building_detail(self, i):

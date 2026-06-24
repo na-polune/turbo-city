@@ -5,12 +5,15 @@ export const appState = {
   world: null,
   cur: null,
   prev: null,
-  euiMap: {},
-  euiOverlay: false,
-  scenarioOverlay: false,
-  scenarioMap: {},      // building id -> { norm: -1..1, in_scope }
-  heatOverlay: false,
+  activeView: null,     // active Info-View id (null = no overlay)
+  activeTab: 'e_total', // active tab within a tabbed view (Energy)
+  viewMap: {},          // building id -> live per-building scalars (from /api/state)
+  viewNorm: {},         // building id -> normalised value for the active view
+  viewLegend: null,     // { lo, hi, unit, ramp, detail?, stats? } for the active view
+  scenarioMap: {},      // building id -> { norm: -1..1, in_scope } (retrofit view)
+  scenarioMeta: null,
   heatMap: {},          // building id -> { severity: 0..1, peak_t_in_c, overheat_hours }
+  heatMeta: null,       // { lo, hi, unit, detail, stats } for the overheating view
   dirty: true,          // request a redraw (render loop idles when paused + clean)
   lastInteract: 0,      // performance.now() of last pointer/wheel input
   tool: null,

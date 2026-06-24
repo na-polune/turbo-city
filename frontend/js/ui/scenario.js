@@ -9,6 +9,7 @@ import { renderChart } from './popup.js';
 import { appState } from '../state.js';
 import { TYPE_LABEL } from '../config.js';
 import { clamp } from '../math.js';
+import { setActiveView, refreshView } from './infoview.js';
 
 // Slider value IS the multiplier sent to the backend (1.0 = no change). dir 'down'
 // = a factor below 1 is the improvement; dir 'up' = a factor above 1 is.
@@ -66,11 +67,11 @@ export function setupScenario() {
   targetSel.addEventListener('change', run);
   tariffInp.addEventListener('input', debouncedRun);
   mapToggle.addEventListener('change', () => {
-    appState.scenarioOverlay = mapToggle.checked;
     if (mapToggle.checked) {
-      appState.euiOverlay = false;
-      document.getElementById('euiToggle').classList.remove('active');
       applyMap(last);
+      setActiveView('retrofit');
+    } else if (appState.activeView === 'retrofit') {
+      setActiveView(null);
     }
   });
   document.getElementById('scenarioExport').addEventListener('click', () =>
@@ -145,7 +146,7 @@ async function run() {
     if (seq !== runSeq) return;          // a newer run started — discard this stale result
     last = r;
     renderResults(last);
-    if (appState.scenarioOverlay) applyMap(last);
+    if (appState.activeView === 'retrofit') { applyMap(last); refreshView(); }
   } catch (e) {
     if (seq === runSeq) resultsEl.innerHTML = `<p class="scenErr">${e.message}</p>`;
   } finally {
@@ -212,7 +213,7 @@ function renderCost(r) {
 }
 
 function applyMap(r) {
-  if (!r) { appState.scenarioMap = {}; return; }
+  if (!r) { appState.scenarioMap = {}; appState.scenarioMeta = null; return; }
   let maxImp = 0;
   for (const row of r.buildings) if (row.in_scope) maxImp = Math.max(maxImp, Math.abs(row.delta_pct));
   const map = {};
@@ -221,6 +222,8 @@ function applyMap(r) {
     map[row.id] = { norm: maxImp ? clamp(imp / maxImp, -1, 1) : 0, in_scope: row.in_scope };
   }
   appState.scenarioMap = map;
+  const n = r.n_in_scope != null ? r.n_in_scope : Object.keys(map).length;
+  appState.scenarioMeta = { lo: 'uses more', hi: 'saves', unit: '', detail: `Retrofit savings · ${n} buildings in scope` };
 }
 
 function clearChart() {

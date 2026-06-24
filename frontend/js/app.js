@@ -8,7 +8,7 @@ import { setupTimeControls } from './ui/time-controls.js';
 import { setupCityLoader } from './ui/city-loader.js';
 import { setupExport } from './ui/export.js';
 import { setupScenario } from './ui/scenario.js';
-import { setupHeatmap } from './ui/heatmap.js';
+import { setupInfoView } from './ui/infoview.js';
 import { appState } from './state.js';
 
 resize();
@@ -19,7 +19,7 @@ setupTimeControls();
 setupCityLoader();
 setupExport();
 setupScenario();
-setupHeatmap();
+setupInfoView();
 fetchWorld().then(() => { fitCamera(); pollState(); startRenderLoop(); });
 setTimeout(() => document.getElementById('toast').classList.add('hide'), 9000);
 

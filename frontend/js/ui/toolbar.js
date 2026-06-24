@@ -11,15 +11,6 @@ export function setTool(t) {
 export function setupToolbar() {
   document.querySelectorAll('#toolbar button[data-tool]').forEach(b =>
     b.addEventListener('click', () => setTool(b.dataset.tool)));
-  document.getElementById('euiToggle').addEventListener('click', () => {
-    appState.euiOverlay = !appState.euiOverlay;
-    document.getElementById('euiToggle').classList.toggle('active', appState.euiOverlay);
-    if (appState.euiOverlay) {            // EUI and heat overlays are mutually exclusive
-      appState.heatOverlay = false;
-      document.getElementById('heatPanel').classList.remove('open');
-    }
-    appState.dirty = true;
-  });
   document.querySelectorAll('#bldgTypes button').forEach(b =>
     b.addEventListener('click', () => {
       appState.bldgType = b.dataset.btype;

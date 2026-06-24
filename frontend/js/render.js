@@ -1,6 +1,7 @@
 import { cam, viewport } from './camera.js';
 import { HW, HH, FLOOR_H } from './config.js';
-import { lerp, clamp, lerpColor, shade, mulberry32, nightFactor, euiColor, savingsColor, isoX, isoY } from './math.js';
+import { lerp, clamp, lerpColor, shade, mulberry32, nightFactor, isoX, isoY } from './math.js';
+import { overlayColorFor } from './views.js';
 import { appState, frameState } from './state.js';
 import { ground } from './world-prep.js';
 import { updateHUD } from './ui/hud.js';
@@ -30,19 +31,9 @@ function drawBuilding(b, withWindows) {
   ctx.beginPath();
   b.iso.forEach(([x, y], i) => i ? ctx.lineTo(x, y - lift) : ctx.moveTo(x, y - lift));
   ctx.closePath();
-  const scen = appState.scenarioOverlay ? appState.scenarioMap[b.id] : null;
-  if (scen) {
-    ctx.fillStyle = scen.in_scope ? savingsColor(scen.norm) : 'rgba(40,48,62,0.9)';
-    ctx.globalAlpha = scen.in_scope ? 0.9 : 0.55;
-    ctx.fill();
-    ctx.globalAlpha = 1.0;
-  } else if (appState.euiOverlay && appState.euiMap[b.id] != null) {
-    ctx.fillStyle = euiColor(appState.euiMap[b.id].eui_norm);
-    ctx.globalAlpha = 0.85;
-    ctx.fill();
-    ctx.globalAlpha = 1.0;
-  } else if (appState.heatOverlay && appState.heatMap[b.id] != null) {
-    ctx.fillStyle = euiColor(appState.heatMap[b.id].severity);
+  const overlay = overlayColorFor(b.id);
+  if (overlay) {
+    ctx.fillStyle = overlay;
     ctx.globalAlpha = 0.85;
     ctx.fill();
     ctx.globalAlpha = 1.0;
@@ -53,12 +44,12 @@ function drawBuilding(b, withWindows) {
   ctx.strokeStyle = 'rgba(0,0,0,0.25)';
   ctx.lineWidth = 1;
   ctx.stroke();
-  const eui = appState.euiMap[b.id];
-  if (eui && eui.pv_kw > 0.5) {
+  const vd = appState.viewMap[b.id];
+  if (vd && vd.pv > 0.5) {
     ctx.beginPath();
     b.iso.forEach(([x, y], i) => i ? ctx.lineTo(x, y - lift) : ctx.moveTo(x, y - lift));
     ctx.closePath();
-    ctx.fillStyle = `rgba(253,224,71,${Math.min(0.55, eui.pv_kw / 20)})`;
+    ctx.fillStyle = `rgba(253,224,71,${Math.min(0.55, vd.pv / 20)})`;
     ctx.fill();
   }
 }
