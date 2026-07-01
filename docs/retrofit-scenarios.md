@@ -149,7 +149,7 @@ City aggregation (`_aggregate`) sums the additive metrics across in-scope buildi
 
 ### Capex
 
-`_capex` sums, over the in-scope buildings, an indicative cost in £/m² at *full* application of each measure, scaled linearly by how aggressively the measure is set. The cost book `MEASURE_COST` (key → £/m², area basis):
+`_capex` sums, over the in-scope buildings, an indicative cost in currency/m² at *full* application of each measure, scaled linearly by how aggressively the measure is set. The default cost book `MEASURE_COST` (key → £/m², area basis) is listed below; the unit costs, the currency symbol, and the default tariff can all be localized via `input/config.json` → `"locale"` (see the README) without touching code:
 
 | Measure | £/m² (full) | Area basis | Intensity used |
 |---|---|---|---|

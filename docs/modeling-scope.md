@@ -116,12 +116,12 @@ Read this section as the "do not over-trust" list. The numbers are *plausible*, 
 1. **Geometry is idealized.** Every building is treated as a square prism (`perimeter = 4·√area`, `height = floors × 3 m`). Real footprint shape only enters through the façade-orientation factor.
 2. **One thermal zone, one capacitance.** No floor-by-floor, room-by-room, or core/perimeter distinction. Forward-Euler integration is stable only while the timestep stays well below `Cm/UA` (~20 h for heavy buildings) — true at normal time-warp, but extreme fast-forward could drift.
 3. **Sensible heat only.** No humidity, latent load, DHW, ventilation, or infiltration.
-4. **All-electric, single grid factor.** No fuel mix, no time-of-day emissions, no gas or district heat.
+4. **All-electric, single grid factor.** No fuel mix, no time-of-day emissions, no gas or district heat. The factor itself is localizable via `input/config.json` → `"locale"`, but it stays a single static number.
 5. **Fixed, idealized HVAC.** COP = 3.0 flat; no equipment sizing, part-load behavior, or system type. HVAC is a pure proportional restore to setpoint.
 6. **Solar is coarse.** Linear azimuth sweep, isotropic peak irradiance, no inter-building shading, no diffuse/direct decomposition.
 7. **Schedules are deterministic per type.** Occupancy comes from a fixed piecewise curve per building type (`constants.OCC`); there is no stochastic occupancy or per-building variation.
 8. **Constants are representative defaults**, drawn from SIA/ISO standards and typical building-stock values, not calibrated against any specific building stock or measured data.
-9. **Retrofit costs are placeholders.** `MEASURE_COST` and the default tariff in `backend/scenario.py` are early-stage planning figures meant to be replaced with a real local cost book.
+9. **Retrofit costs are placeholders.** The default `MEASURE_COST` unit costs and tariff in `backend/scenario.py` are early-stage planning figures — supply a real local cost book via `input/config.json` → `"locale": {"measure_cost_per_m2": ...}` (no code change needed).
 10. **No district-scale interactions.** Buildings do not share plant, networks, or shading with each other in the energy model.
 
 None of these undermine the project's purpose. They are the price of a model that recomputes an entire city every tick and lets a student *feel* how a building responds to its envelope, its schedule, the sun, and the weather.

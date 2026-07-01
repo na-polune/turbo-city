@@ -219,7 +219,7 @@ with $f_\text{PV}$ = `PV_ROOF_FRACTION` = 0.40 (usable fraction after obstacles/
 
 $$\dot{m}_{CO_2} = P_\text{total}\cdot \text{CO2\_GRID\_KG\_KWH}\quad[\text{kg/h}]$$
 
-`CO2_GRID_KG_KWH` = **0.233 kg CO₂/kWh** (UK National Grid 2024 average, DESNZ). PV is **not** netted out of the CO₂ figure — emissions track gross consumption, not consumption-minus-generation.
+`CO2_GRID_KG_KWH` defaults to **0.233 kg CO₂/kWh** (UK National Grid 2024 average, DESNZ) and is localizable via `input/config.json` → `"locale": {"co2_grid_kg_kwh": ...}` for other grids. PV is **not** netted out of the CO₂ figure — emissions track gross consumption, not consumption-minus-generation.
 
 ---
 
@@ -247,7 +247,7 @@ def _resolve(btype, params):
 - **Live simulation path:** passes `params=None` → falls back to the cached type baseline → behaviour identical to having no `Params` at all.
 - **Retrofit path:** `backend/scenario.py` derives a modified copy with `dataclasses.replace(...)` (e.g. lower U-values, added rooftop PV) and threads it through every function to recompute the "after" case. See [Retrofit Scenarios](retrofit-scenarios.md).
 
-Note that a few constants are **not** part of `Params` and stay global: `U_BASE`, `B_F`, `FLOOR_HEIGHT`, `ELEC_TO_HEAT`, `SOLAR_PEAK_W_M2`, and `CO2_GRID_KG_KWH`. A retrofit cannot vary these.
+Note that a few constants are **not** part of `Params` and stay global: `U_BASE`, `B_F`, `FLOOR_HEIGHT`, `ELEC_TO_HEAT`, `SOLAR_PEAK_W_M2`, and `CO2_GRID_KG_KWH`. A retrofit cannot vary these (though `CO2_GRID_KG_KWH` is configurable per locale at startup, see above).
 
 ---
 

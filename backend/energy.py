@@ -19,6 +19,10 @@ import math
 from dataclasses import dataclass
 from functools import lru_cache
 
+from .config import load_locale
+
+_LOCALE = load_locale()
+
 # ---- floor geometry (H_F from CEA demand/constants.py) ----
 FLOOR_HEIGHT = 3.0   # m per floor
 B_F = 0.7            # ground-floor transmittance reduction factor (SIA 380/1)
@@ -74,8 +78,9 @@ PV_EFFICIENCY    = 0.18   # monocrystalline panel efficiency [-]
 PV_ROOF_FRACTION = 0.40   # usable roof area fraction (excludes obstacles, shading)
 
 # ---- CO₂ emission factor for grid electricity [kg CO₂/kWh] ----
-# UK National Grid 2024 average (source: DESNZ / CEA energy_carriers.py)
-CO2_GRID_KG_KWH = 0.233
+# Default: UK National Grid 2024 average (source: DESNZ / CEA energy_carriers.py).
+# Localizable via input/config.json → "locale": {"co2_grid_kg_kwh": ...}.
+CO2_GRID_KG_KWH = float(_LOCALE.get("co2_grid_kg_kwh", 0.233))
 
 
 @dataclass(frozen=True)

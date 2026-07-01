@@ -20,6 +20,9 @@ venv/
 Thumbs.db
 .DS_Store
 
+# headless batch results (python -m backend.batch)
+output/
+
 # throwaway test artifacts
 _shots/
 _ui_smoke.py

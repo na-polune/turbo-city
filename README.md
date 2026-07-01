@@ -68,6 +68,19 @@ Open **http://localhost:8000** — drag to pan, scroll to zoom, click any buildi
 
 The world is chosen entirely by `input/config.json` (`"world": "map"` for real OSM, `"grid"` for the offline test scene). With `--reload`, editing any `input/*.json` restarts the server automatically. The first map load fetches the OSM area once via the Overpass API and caches it under `backend/data/` — after that it runs offline.
 
+An optional `"locale"` block in `input/config.json` localizes the economics and emissions without touching Python — grid carbon intensity, currency symbol, electricity tariff, and the retrofit cost book:
+
+```json
+"locale": {
+  "co2_grid_kg_kwh": 0.233,
+  "currency": "£",
+  "tariff_per_kwh": 0.28,
+  "measure_cost_per_m2": { "u_wall": 60.0, "pv_fraction": 250.0 }
+}
+```
+
+Every key is optional; omitted keys fall back to the UK-flavored defaults documented in [the energy model](docs/energy-model.md) and [retrofit scenarios](docs/retrofit-scenarios.md).
+
 ## 🧭 How it works
 
 ```mermaid
@@ -121,6 +134,29 @@ Six building archetypes carry their own standards-based U-values, schedules, den
 | `POST /api/scenario` | Before/after retrofit comparison — stateless, never touches the live sim |
 | `POST /api/load_city` | Rebuild the world for any lat/lon |
 | `GET /api/export/buildings.csv` · `POST /api/export/scenario.csv` | Downloadable CSV exports |
+
+Interactive API documentation (Swagger UI) is served at **`/docs`**, and the machine-readable schema at `/openapi.json` — point a client generator at it to script the sim from any language.
+
+## 🖥️ Headless batch mode
+
+Everything the retrofit panel computes is also available **without the server or the browser** — for scripting, CI, or feeding results into GIS tools:
+
+```bash
+python -m backend.batch                                  # baseline CSV + GeoJSON
+python -m backend.batch --measure u_wall=0.7 --measure cop=1.3 --target-types res
+python -m backend.batch --scenario myplan.json --tariff 0.30 --out results/
+python -m backend.batch --list-measures                  # available measure keys
+```
+
+It builds the same world from `input/` (OSM cache included), evaluates every building over the deterministic design day, and writes:
+
+| File | Contents |
+|---|---|
+| `buildings.csv` | Per-building baseline day: energy breakdown, CO₂, PV, peak kW, annualised EUI |
+| `buildings.geojson` | Building footprints in **WGS84** with the same metrics as properties — drop straight into QGIS / ArcGIS / kepler.gl |
+| `scenario.json` · `scenario_buildings.csv` | Full before/after comparison + per-building rows (when measures are given) |
+
+A `--scenario` file uses the same JSON body as `POST /api/scenario`; `--measure` / `--target-*` / `--tariff` flags merge over it.
 
 ## 📚 Documentation
 

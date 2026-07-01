@@ -16,7 +16,10 @@ import math
 from dataclasses import replace
 
 from . import energy
+from .config import load_locale
 from .constants import SAMPLE_MIN, HISTORY_LEN
+
+_LOCALE = load_locale()
 
 DT_H = SAMPLE_MIN / 60.0          # hours represented by one sample step
 DAYS_PER_YEAR = 365.0
@@ -42,11 +45,12 @@ SETPOINT_MEASURES = {
     "t_cool_delta": "t_cool",
 }
 
-# Indicative retrofit capex, in £ per m² of the cost basis, at *full* application
-# of the measure; scaled linearly by how aggressively the measure is set. These
-# are early-stage planning figures only — replace with a local cost book as needed.
+# Indicative retrofit capex, in currency per m² of the cost basis, at *full*
+# application of the measure; scaled linearly by how aggressively the measure is
+# set. Defaults are early-stage UK planning figures — localize the unit costs via
+# input/config.json → "locale": {"measure_cost_per_m2": {"u_wall": 55, ...}}.
 # basis: 'floor' = total floor area (area × floors); 'roof' = footprint area.
-MEASURE_COST = {
+_DEFAULT_MEASURE_COST = {
     "u_wall":      (60.0,  "floor"),
     "u_roof":      (25.0,  "roof"),
     "u_win":       (80.0,  "floor"),
@@ -56,7 +60,16 @@ MEASURE_COST = {
     "cop":         (70.0,  "floor"),
     "pv_fraction": (250.0, "roof"),
 }
-DEFAULT_TARIFF = 0.28   # £/kWh, indicative UK retail electricity price
+_cost_over = _LOCALE.get("measure_cost_per_m2", {})
+_unknown = set(_cost_over) - set(_DEFAULT_MEASURE_COST)
+if _unknown:
+    raise ValueError(
+        f"input/config.json: locale.measure_cost_per_m2 has unknown measures "
+        f"{sorted(_unknown)}, expected {sorted(_DEFAULT_MEASURE_COST)}")
+MEASURE_COST = {key: (float(_cost_over.get(key, unit)), basis)
+                for key, (unit, basis) in _DEFAULT_MEASURE_COST.items()}
+CURRENCY = _LOCALE.get("currency", "£")
+DEFAULT_TARIFF = float(_LOCALE.get("tariff_per_kwh", 0.28))  # currency/kWh
 
 MAX_FACTOR = 10.0
 MAX_DELTA_C = 10.0
@@ -207,7 +220,7 @@ def _diff(base, retro):
 
 
 def _capex(in_scope, measures):
-    """Indicative total retrofit capex [£] over the in-scope buildings."""
+    """Indicative total retrofit capex [locale currency] over the in-scope buildings."""
     capex = 0.0
     for b in in_scope:
         floor = max(1.0, b.area_m2 * b.floors)
@@ -250,7 +263,7 @@ def compare(buildings, measures, target=None, tariff=None):
     target = validate_target(target)
     tariff = DEFAULT_TARIFF if tariff is None else tariff
     if not (_is_num(tariff) and 0 <= tariff <= 100):
-        raise ValueError("tariff must be a number in 0..100 (£/kWh)")
+        raise ValueError("tariff must be a number in 0..100 (currency/kWh)")
     tariff = float(tariff)
 
     rows, scopes = [], []          # rows: (building, base_eval, retro_eval) for all
@@ -294,7 +307,7 @@ def compare(buildings, measures, target=None, tariff=None):
             "retrofit": [round(v, 1) for v in retro_profile],
         },
         "cost": {
-            "currency": "£",
+            "currency": CURRENCY,
             "tariff": round(tariff, 4),
             "capex": round(capex),
             "annual_savings": round(annual_savings),
