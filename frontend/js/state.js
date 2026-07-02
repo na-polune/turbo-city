@@ -16,6 +16,11 @@ export const appState = {
   heatMeta: null,       // { lo, hi, unit, detail, stats } for the overheating view
   dirty: true,          // request a redraw (render loop idles when paused + clean)
   lastInteract: 0,      // performance.now() of last pointer/wheel input
+  style: {              // render style (persisted by ui/style.js)
+    ground: 'stylized', // 'stylized' | 'hillshade' | 'map' | 'satellite'
+    relief: true,       // lift features to terrain height (non-stylized modes)
+    detail: 'auto',     // LOD: 'auto' | 'low' | 'high'
+  },
   tool: null,
   bldgType: 'res',
   openKind: null,

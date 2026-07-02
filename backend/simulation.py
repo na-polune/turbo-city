@@ -577,6 +577,8 @@ class Simulation:
             "world_rev": self.world_rev,
             "name": w["name"],
             "radius_m": w["radius_m"],
+            "center": w.get("center"),     # [lat, lon] for map worlds (imagery ground)
+            "terrain": w.get("terrain"),   # elevation grid or null (flat)
             "buildings": [{
                 "id": b["id"], "name": b["name"], "type": b["type"],
                 "floors": b["floors"], "polygon": b["polygon"], "center": b["center"],

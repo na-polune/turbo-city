@@ -31,6 +31,7 @@ It's a **sandbox**, not a batch tool: the entire city recomputes every tick whil
 - 🖱️ **Fully interactive** — click buildings/cars/people for live detail, add or bulldoze buildings & roads, change floors, spawn agents, scrub time, all live.
 - 📊 **Retrofit scenarios** — drag city-wide measure sliders (insulation, glazing, LED, heat-pump COP, rooftop PV) and see baseline → retrofit EUI, load curves, CO₂ and indicative payback, side by side.
 - 🌡️ **EUI heat-map** — recolor rooftops green→red by energy-use intensity; gold rim marks buildings generating solar PV.
+- 🏔️ **Terrain & realistic ground (optional)** — real DEM elevation as hillshaded relief that lifts buildings, roads and agents to their true height, or OSM map / satellite imagery warped into the isometric ground, plus level-of-detail tiers. The classic stylized look stays the default.
 - 🌦️ **Live weather** — real temperature via the Open-Meteo API; clouds and rain scale solar gain, envelope loss and agent speed.
 - 📦 **No build step** — the front end is plain HTML + CSS + native ES modules. No npm, no bundler, no transpile.
 
@@ -52,6 +53,15 @@ It's a **sandbox**, not a batch tool: the entire city recomputes every tick whil
     </td>
   </tr>
 </table>
+
+## 🏔️ Realistic ground & terrain
+
+Two new HUD rails keep the classic stylized view as the default while adding optional realism:
+
+- **Ground** — `Stylized` (default) · `Hillshade` (slope-shaded real elevation) · `Map` (OpenStreetMap tiles) · `Satellite` (Esri World Imagery), the imagery warped into the isometric ground plane per terrain cell.
+- **Display** — `Relief` lifts buildings, roads, cars and people to their true ground height (available in terrain-aware ground modes); `Detail` pins the level-of-detail (`Auto` switches with zoom: far = flat footprints, mid = volumes, near = façades & windows).
+
+Elevation comes from a 33×33 DEM grid fetched once per city (SRTM via the Open-Elevation API, Open-Meteo as fallback) and cached in `backend/data/` beside the OSM cache; tile imagery is fetched by the browser with the required attribution shown on-screen. The grid test world has no geo-reference, so it stays stylized. Everything here is **cosmetic** — the energy model does not read elevation. Choices persist in the browser.
 
 ## 🚀 Quickstart
 

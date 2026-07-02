@@ -382,6 +382,13 @@ html, body{ margin:0; padding:0; height:100%; overflow:hidden;
               color .14s ease, box-shadow .14s ease;
 }
 
+/* map-data attribution (required by OSM / Esri tile usage policies) */
+#attribution{
+  position:fixed; right:8px; bottom:6px; z-index:5; display:none;
+  font-size:10px; color:rgba(255,255,255,0.75); pointer-events:none;
+  background:rgba(10,14,22,0.55); padding:2px 7px; border-radius:6px;
+}
+
 /* dark, slim scrollbar on the only scrolling panel */
 #scenarioPanel{ scrollbar-width:thin; scrollbar-color:rgba(255,255,255,0.18) transparent; }
 #scenarioPanel::-webkit-scrollbar{ width:8px; }

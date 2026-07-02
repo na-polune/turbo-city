@@ -4,6 +4,7 @@ import { lerp, clamp, lerpColor, shade, mulberry32, nightFactor, isoX, isoY } fr
 import { overlayColorFor } from './views.js';
 import { appState, frameState } from './state.js';
 import { ground } from './world-prep.js';
+import { getGroundImage, groundLift } from './terrain.js';
 import { updateHUD } from './ui/hud.js';
 
 const canvas = document.getElementById('city');
@@ -16,7 +17,8 @@ const walkPhases = new Map();
 const SIG_DUR = [9, 2.5, 9, 2.5];
 const SIG_CYCLE = SIG_DUR.reduce((a, b) => a + b);
 
-function drawBuilding(b, withWindows) {
+// tier: 0 = far (flat fills, no stroke/windows), 1 = mid (walls + roof), 2 = full detail
+function drawBuilding(b, tier) {
   const lift = b.H;
   for (const w of b.walls) {
     const [x1, y1] = b.iso[w.i], [x2, y2] = b.iso[(w.i + 1) % b.iso.length];
@@ -26,7 +28,7 @@ function drawBuilding(b, withWindows) {
     ctx.moveTo(x1, y1 - lift); ctx.lineTo(x2, y2 - lift);
     ctx.lineTo(x2, y2); ctx.lineTo(x1, y1);
     ctx.closePath(); ctx.fill();
-    if (withWindows && w.len >= 4) drawWindows(b, w, x1, y1, x2, y2);
+    if (tier === 2 && w.len >= 4) drawWindows(b, w, x1, y1, x2, y2);
   }
   ctx.beginPath();
   b.iso.forEach(([x, y], i) => i ? ctx.lineTo(x, y - lift) : ctx.moveTo(x, y - lift));
@@ -41,11 +43,13 @@ function drawBuilding(b, withWindows) {
     ctx.fillStyle = shade(b.palette[1], 1.18);
     ctx.fill();
   }
-  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  if (tier > 0) {
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
   const vd = appState.viewMap[b.id];
-  if (vd && vd.pv > 0.5) {
+  if (tier > 0 && vd && vd.pv > 0.5) {
     ctx.beginPath();
     b.iso.forEach(([x, y], i) => i ? ctx.lineTo(x, y - lift) : ctx.moveTo(x, y - lift));
     ctx.closePath();
@@ -88,13 +92,14 @@ function drawWindows(b, w, x1, y1, x2, y2) {
 }
 
 function drawCar(c) {
-  const ix = isoX(c.x, c.y), iy = isoY(c.x, c.y);
+  const zl = groundLift(c.x, c.y);
+  const ix = isoX(c.x, c.y), iy = isoY(c.x, c.y) - zl;
   const hx = c.hx, hy = c.hy;
   const px = -hy, py = hx;
   const hl = 2.3, hw = 1.0, bh = 7;
   const P = (l, w) => [
     isoX(c.x + hx * l + px * w, c.y + hy * l + py * w),
-    isoY(c.x + hx * l + px * w, c.y + hy * l + py * w),
+    isoY(c.x + hx * l + px * w, c.y + hy * l + py * w) - zl,
   ];
   const cor = [P(hl, hw), P(hl, -hw), P(-hl, -hw), P(-hl, hw)];
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
@@ -126,7 +131,7 @@ function drawCar(c) {
 }
 
 function drawPerson(p) {
-  const ix = isoX(p.x, p.y), iy = isoY(p.x, p.y);
+  const ix = isoX(p.x, p.y), iy = isoY(p.x, p.y) - groundLift(p.x, p.y);
   let st = walkPhases.get(p.id);
   if (!st) { st = { phase: Math.random() * 7, lastX: p.x, lastY: p.y }; walkPhases.set(p.id, st); }
   st.phase += Math.hypot(p.x - st.lastX, p.y - st.lastY) * 4;
@@ -235,7 +240,16 @@ function render(nowMs) {
     DPR * (W / 2 - cam.x * cam.zoom), DPR * (Hh / 2 - cam.y * cam.zoom));
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
 
+  // Baked ground (hillshade / imagery) replaces some vector fills entirely:
+  // imagery already shows parks and water; hillshade replaces only the disk.
+  const g = getGroundImage();
+  if (g) ctx.drawImage(g.canvas, g.x0, g.y0, g.w, g.h);
+  const skipTag = !g ? null
+    : appState.style.ground === 'hillshade'
+      ? { disk: true }
+      : { disk: true, park: true, water: true };
   for (const l of ground.layers) {
+    if (skipTag && skipTag[l.tag]) continue;
     if (l.fill) { ctx.fillStyle = l.fill; ctx.fill(l.path); }
     else {
       ctx.strokeStyle = l.stroke; ctx.lineWidth = l.width;
@@ -250,8 +264,8 @@ function render(nowMs) {
     ctx.lineWidth = 6 * (HW + HH);
     ctx.setLineDash([16, 10]);
     ctx.beginPath();
-    ctx.moveTo(isoX(roadDraft.x0, roadDraft.y0), isoY(roadDraft.x0, roadDraft.y0));
-    ctx.lineTo(isoX(roadDraft.x1, roadDraft.y1), isoY(roadDraft.x1, roadDraft.y1));
+    ctx.moveTo(isoX(roadDraft.x0, roadDraft.y0), isoY(roadDraft.x0, roadDraft.y0) - groundLift(roadDraft.x0, roadDraft.y0));
+    ctx.lineTo(isoX(roadDraft.x1, roadDraft.y1), isoY(roadDraft.x1, roadDraft.y1) - groundLift(roadDraft.x1, roadDraft.y1));
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -260,7 +274,7 @@ function render(nowMs) {
     const y0 = Math.min(bldgDraft.y0, bldgDraft.y1), y1 = Math.max(bldgDraft.y0, bldgDraft.y1);
     ctx.beginPath();
     [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].forEach(([wx, wy], i) => {
-      const x = isoX(wx, wy), y = isoY(wx, wy);
+      const x = isoX(wx, wy), y = isoY(wx, wy) - groundLift(wx, wy);
       i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
     });
     ctx.closePath();
@@ -271,7 +285,10 @@ function render(nowMs) {
 
   const vx0 = cam.x - W / (2 * cam.zoom) - 80, vx1 = cam.x + W / (2 * cam.zoom) + 80;
   const vy0 = cam.y - Hh / (2 * cam.zoom) - 160, vy1 = cam.y + Hh / (2 * cam.zoom) + 80;
-  const withWindows = cam.zoom >= 0.7;
+  // LOD tier: 'auto' switches on zoom, manual settings pin it.
+  const det = appState.style.detail;
+  const tier = det === 'low' ? 0 : det === 'high' ? 2
+    : cam.zoom < 0.32 ? 0 : cam.zoom < 0.7 ? 1 : 2;
   const s = frameState();
   const items = [];
 
@@ -279,9 +296,11 @@ function render(nowMs) {
     if (b.bb.x1 < vx0 || b.bb.x0 > vx1 || b.bb.y1 < vy0 || b.bb.y0 > vy1) continue;
     items.push({ depth: b.depth, kind: 'bldg', b });
   }
-  for (const d of world.props) {
-    if (d.ix < vx0 || d.ix > vx1 || d.iy < vy0 || d.iy > vy1) continue;
-    items.push({ depth: d.depth, kind: d.kind, d });
+  if (tier > 0) {   // far tier: lamps/signals are sub-pixel noise
+    for (const d of world.props) {
+      if (d.ix < vx0 || d.ix > vx1 || d.iy < vy0 || d.iy > vy1) continue;
+      items.push({ depth: d.depth, kind: d.kind, d });
+    }
   }
   if (s) {
     for (const c of s.cars) items.push({ depth: c.x + c.y, kind: 'car', c });
@@ -289,7 +308,7 @@ function render(nowMs) {
   }
   items.sort((a, b) => a.depth - b.depth);
   for (const it of items) {
-    if (it.kind === 'bldg') drawBuilding(it.b, withWindows);
+    if (it.kind === 'bldg') drawBuilding(it.b, tier);
     else if (it.kind === 'lamp') drawLamp(it.d);
     else if (it.kind === 'signal') drawSignal(it.d, nowSec);
     else if (it.kind === 'car') drawCar(it.c);

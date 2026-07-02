@@ -1,6 +1,7 @@
 import { cam, screenToIso, screenToWorld, clampCam, zoomAt } from './camera.js';
 import { SNAP_M } from './config.js';
 import { isoX, isoY, pointInPoly, clamp } from './math.js';
+import { groundLift } from './terrain.js';
 import { appState, frameState } from './state.js';
 import { sendEdit } from './api.js';
 import { openDetail, closePopup } from './ui/popup.js';
@@ -119,11 +120,13 @@ function hitTest(sx, sy) {
   const pt = screenToIso(sx, sy);
   const s = frameState();
   for (const p of s.people) {
-    const d = Math.hypot(pt.ix - isoX(p.x, p.y), pt.iy - (isoY(p.x, p.y) - 12));
+    const d = Math.hypot(pt.ix - isoX(p.x, p.y),
+                         pt.iy - (isoY(p.x, p.y) - groundLift(p.x, p.y) - 12));
     if (d < 14 / Math.min(1, cam.zoom)) return { kind: 'person', e: p };
   }
   for (const c of s.cars) {
-    const d = Math.hypot(pt.ix - isoX(c.x, c.y), pt.iy - (isoY(c.x, c.y) - 5));
+    const d = Math.hypot(pt.ix - isoX(c.x, c.y),
+                         pt.iy - (isoY(c.x, c.y) - groundLift(c.x, c.y) - 5));
     if (d < 18 / Math.min(1, cam.zoom)) return { kind: 'car', e: c };
   }
   for (let i = world.buildings.length - 1; i >= 0; i--) {

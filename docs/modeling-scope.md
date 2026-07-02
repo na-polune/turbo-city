@@ -124,6 +124,7 @@ Read this section as the "do not over-trust" list. The numbers are *plausible*, 
 8. **Constants are representative defaults**, drawn from SIA/ISO standards and typical building-stock values, not calibrated against any specific building stock or measured data. Two hooks narrow the gap: per-building overrides (`backend/overrides.py`, including measured annual kWh for model-vs-measured reporting) and the archetype benchmark check (`python -m backend.validate`).
 9. **Retrofit costs are placeholders.** The default `MEASURE_COST` unit costs and tariff in `backend/scenario.py` are early-stage planning figures — supply a real local cost book via `input/config.json` → `"locale": {"measure_cost_per_m2": ...}` (no code change needed).
 10. **No district-scale interactions.** Buildings do not share plant, networks, or shading with each other in the energy model.
+11. **Terrain is cosmetic.** The optional DEM terrain / relief rendering (`backend/terrain.py`) never enters the physics: no altitude temperature offset, no slope or horizon effects on solar gain.
 
 None of these undermine the project's purpose. They are the price of a model that recomputes an entire city every tick and lets a student *feel* how a building responds to its envelope, its schedule, the sun, and the weather.
 

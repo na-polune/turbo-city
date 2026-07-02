@@ -9,6 +9,7 @@ import { setupCityLoader } from './ui/city-loader.js';
 import { setupExport } from './ui/export.js';
 import { setupScenario } from './ui/scenario.js';
 import { setupInfoView } from './ui/infoview.js';
+import { setupStyle } from './ui/style.js';
 import { appState } from './state.js';
 
 resize();
@@ -20,6 +21,7 @@ setupCityLoader();
 setupExport();
 setupScenario();
 setupInfoView();
+setupStyle();   // must run before fetchWorld: prepareWorld reads appState.style
 fetchWorld().then(() => { fitCamera(); pollState(); startRenderLoop(); });
 setTimeout(() => document.getElementById('toast').classList.add('hide'), 9000);
 

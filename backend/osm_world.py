@@ -84,6 +84,16 @@ def project(lat, lon, center):
     return x, y
 
 
+def unproject(center):
+    """Inverse of project(): a callable local meters (x, y) -> [lon, lat]."""
+    lat0, lon0 = center
+    m_per_deg_lon = 111320 * math.cos(math.radians(lat0))
+
+    def _to_lonlat(x, y):
+        return [round(lon0 + x / m_per_deg_lon, 7), round(lat0 - y / 110540, 7)]
+    return _to_lonlat
+
+
 def shoelace_area(poly):
     a = 0.0
     for (x1, y1), (x2, y2) in zip(poly, poly[1:] + poly[:1]):
@@ -211,9 +221,13 @@ def build_world(spec, seed=0):
     if len(lamps) < 15:
         lamps = synthesize_lamps(roads, spacing=30)
 
+    from .terrain import build_terrain   # lazy: terrain imports DATA_DIR from here
+
     return {
         "name": spec["name"],
         "radius_m": spec["radius_m"],
+        "center": list(spec["center"]),
+        "terrain": build_terrain(spec),
         "n_cars": spec["n_cars"],
         "n_people": spec["n_people"],
         "car_speed_mps": spec.get("car_speed_mps"),

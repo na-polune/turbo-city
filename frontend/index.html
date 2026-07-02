@@ -27,6 +27,14 @@
     <span class="rail-label">Map view</span>
     <div class="info-rail" id="infoRail"></div>
   </div>
+  <div class="rail-wrap">
+    <span class="rail-label">Ground</span>
+    <div class="info-rail" id="groundRail"></div>
+  </div>
+  <div class="rail-wrap">
+    <span class="rail-label">Display</span>
+    <div class="info-rail" id="displayRail"></div>
+  </div>
   <div class="tools" id="toolbar">
     <button data-tool="car" title="Arm, then click a road to add a car (Esc to cancel)">+ 🚗 Car</button>
     <button data-tool="person" title="Arm, then click a road to add a person (Esc to cancel)">+ 🚶 Person</button>
@@ -120,6 +128,8 @@
 </div>
 
 <div id="toast" class="panel"><span class="dot"></span><span>Drag to pan, scroll to zoom. Click any <b>building</b>, <b>car</b> or <b>person</b>; results come from the Python backend.</span></div>
+
+<div id="attribution"></div>
 
 <div id="tooltip"></div>
 

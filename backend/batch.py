@@ -35,12 +35,11 @@ rows with measured_kwh_yr get a model-vs-measured column in the annual output.
 import argparse
 import csv
 import json
-import math
 import random
 import sys
 from pathlib import Path
 
-from . import annual, config, energy, overrides as overrides_mod, scenario
+from . import annual, config, energy, osm_world, overrides as overrides_mod, scenario
 from .simulation import WORLD_BUILDERS, Building
 
 BASELINE_COLS = ["id", "name", "type", "floors", "area_m2",
@@ -124,19 +123,9 @@ def annual_rows(buildings, params_for, ovr, weather):
     return rows, monthly
 
 
-def unproject(center):
-    """Inverse of osm_world.project: local meters (x-east, y-south) -> [lon, lat]."""
-    lat0, lon0 = center
-    m_per_deg_lon = 111320 * math.cos(math.radians(lat0))
-
-    def _to_lonlat(x, y):
-        return [round(lon0 + x / m_per_deg_lon, 7), round(lat0 - y / 110540, 7)]
-    return _to_lonlat
-
-
 def write_geojson(path, world, center, props_by_id):
     """Building footprints as a WGS84 FeatureCollection with result properties."""
-    to_lonlat = unproject(center)
+    to_lonlat = osm_world.unproject(center)
     features = []
     for b in world["buildings"]:
         ring = [to_lonlat(x, y) for x, y in b["polygon"]]
