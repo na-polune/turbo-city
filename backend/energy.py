@@ -38,6 +38,15 @@ U_BASE = 0.5          # ground slab [W/m²K]
 # ---- window-to-wall ratio [-] ----
 WIN_WALL = {'res': 0.25, 'office': 0.40, 'shop': 0.35, 'hospital': 0.30, 'school': 0.30, 'industrial': 0.15}
 
+# ---- combined ventilation + infiltration air-change rate [1/h] ----
+# Whole-building outdoor-air rate (mechanical/natural ventilation + envelope
+# leakage, no heat recovery), representative of CEA/ASHRAE 62.1 stock values.
+# hospital: high hygiene air-change requirement; shop/school: door traffic.
+ACH = {'res': 0.5, 'office': 0.7, 'shop': 0.9, 'hospital': 1.2, 'school': 1.0, 'industrial': 0.8}
+
+# volumetric heat capacity of air [Wh/m³K] (1.2 kg/m³ × 1005 J/kgK ÷ 3600)
+RHO_CP_AIR_WH_M3K = 0.34
+
 # ---- solar heat gain coefficient of glazing [-] (G_win in CEA) ----
 G_WIN = {'res': 0.55, 'office': 0.50, 'shop': 0.60, 'hospital': 0.50, 'school': 0.55, 'industrial': 0.55}
 
@@ -96,6 +105,7 @@ class Params:
     u_win: float         # window U-value [W/m²K]
     win_wall: float      # window-to-wall ratio [-]
     g_win: float         # glazing solar heat gain coefficient [-]
+    ach: float           # ventilation + infiltration air changes per hour [1/h]
     cm_af: float         # thermal mass [J/K per m² footprint]
     t_heat: float        # heating setpoint [°C]
     t_cool: float        # cooling setpoint [°C]
@@ -116,7 +126,7 @@ def base_params(btype: str) -> Params:
     """
     return Params(
         u_wall=U_WALL[btype], u_roof=U_ROOF[btype], u_win=U_WIN[btype],
-        win_wall=WIN_WALL[btype], g_win=G_WIN[btype], cm_af=Cm_Af[btype],
+        win_wall=WIN_WALL[btype], g_win=G_WIN[btype], ach=ACH[btype], cm_af=Cm_Af[btype],
         t_heat=T_HEAT[btype], t_cool=T_COOL[btype],
         cop_heat=COP_HEAT, cop_cool=COP_COOL,
         e_density=E_DENSITY[btype], lpd=LPD[btype],
@@ -169,6 +179,19 @@ def envelope_UA(area_m2, floors, btype, params=None):
           + p.u_win  * win_area
           + p.u_roof * area_m2
           + U_BASE   * area_m2 * B_F)
+
+
+def ventilation_UA(area_m2, floors, btype, params=None):
+    """Ventilation + infiltration conductance [W/K]: ρ·cp·ACH·V ÷ 3600.
+
+    A second heat-loss path alongside the envelope: outdoor air exchanged at
+    `ach` air changes per hour over the building volume. No heat recovery —
+    retrofitting air-tightness/MVHR is modelled by scaling `ach` down
+    (the "ach" measure in backend/scenario.py).
+    """
+    p = _resolve(btype, params)
+    volume = area_m2 * floors * FLOOR_HEIGHT
+    return RHO_CP_AIR_WH_M3K * p.ach * volume
 
 
 def facade_orientation_factor(polygon):
@@ -251,10 +274,12 @@ def step_T_in(T_in, T_out, area_m2, floors, btype, occ, hour, sim_dt_s,
     1C RC node: C·dT/dt = Q_gain - UA·(T_in - T_out)
     Euler integration; stable for sim_dt_s << Cm/UA (~20 h for heavy buildings).
     Mirrors the single-zone ISO 13790 / SIA 2044 5R1C model reduced to 1C.
-    solar_mult scales solar gain (clouds); ua_mult scales envelope loss (rain/wind).
+    UA is envelope + ventilation/infiltration; solar_mult scales solar gain
+    (clouds); ua_mult scales both loss paths (rain/wind also drives infiltration).
     """
     p      = _resolve(btype, params)
-    UA     = envelope_UA(area_m2, floors, btype, p) * ua_mult
+    UA     = (envelope_UA(area_m2, floors, btype, p)
+              + ventilation_UA(area_m2, floors, btype, p)) * ua_mult
     Cm     = p.cm_af * area_m2
     Q_gain = (solar_gain_W(area_m2, floors, btype, hour, solar_mult, orientation_factor, p)
               + internal_gain_W(area_m2, floors, btype, occ, p))
@@ -268,10 +293,11 @@ def hvac_kw(T_in, area_m2, floors, btype, ua_mult=1.0, params=None):
     Proportional to the UA-weighted temperature deviation from setpoint,
     divided by system COP — consistent with CEA's calc_Qhs_Qcs_sys_max() logic.
     Heating when T_in < T_HEAT, cooling when T_in > T_COOL, idle in between.
-    ua_mult scales envelope conductance (e.g. higher in rain/wind).
+    UA is envelope + ventilation/infiltration, scaled by ua_mult (rain/wind).
     """
     p = _resolve(btype, params)
-    UA = envelope_UA(area_m2, floors, btype, p) * ua_mult
+    UA = (envelope_UA(area_m2, floors, btype, p)
+          + ventilation_UA(area_m2, floors, btype, p)) * ua_mult
     if T_in < p.t_heat:
         return UA * (p.t_heat - T_in) / (1000.0 * p.cop_heat)
     if T_in > p.t_cool:
@@ -304,15 +330,17 @@ def lighting_kw(area_m2, floors, btype, occ, hour, params=None):
     return area_m2 * floors * p.lpd * occ * (1.0 - 0.8 * daylight) / 1000.0
 
 
-def total_load_kw(T_in, area_m2, floors, btype, occ, hour, ua_mult=1.0, params=None):
+def total_load_kw(T_in, area_m2, floors, btype, occ, hour, ua_mult=1.0, params=None,
+                  min_kw=0.5):
     """Total building load [kW] and component breakdown.
 
-    Returns (total, hvac, electrical, lighting). Minimum 0.5 kW so buildings
-    never read zero on the dashboard.
+    Returns (total, hvac, electrical, lighting). The default 0.5 kW floor keeps
+    buildings from reading zero on the dashboard — a UI nicety, not physics.
+    Analytical paths that need unbiased numbers (backend/annual.py) pass min_kw=0.
     """
     p = _resolve(btype, params)
     h = hvac_kw(T_in, area_m2, floors, btype, ua_mult, p)
     e = electrical_kw(area_m2, floors, btype, occ, p)
     l = lighting_kw(area_m2, floors, btype, occ, hour, p)
-    total = max(0.5, h + e + l)
+    total = max(min_kw, h + e + l)
     return total, h, e, l

@@ -19,9 +19,9 @@ A real-time sandbox and a research-grade engine answer different questions, and 
 | **Primary job** | Demand + supply analysis for district planning | Interactive teaching / what-if exploration |
 | **Time resolution** | Full year, 8760 hourly steps, batch | Live, recomputed every tick (default 10 Hz) |
 | **Run model** | Run once, inspect outputs (CSV / GIS layers) | Continuous loop; edit the world and watch it respond |
-| **Weather** | Full typical-year (TMY/EPW) file | Synthetic daily sinusoid *or* live Open-Meteo current conditions (`backend/weather.py`) |
+| **Weather** | Full typical-year (TMY/EPW) file | Live loop: synthetic daily sinusoid *or* live Open-Meteo (`backend/weather.py`); headless annual mode accepts real EPW/TMY files (`backend/annual.py`) |
 | **Thermal model** | 5R1C (ISO 13790), multi-resistance | 1C reduction of the same RC family (`backend/energy.py`) |
-| **Calibration target** | Validated against measured stock | Plausible per-type defaults from standards & typical-stock values |
+| **Calibration target** | Validated against measured stock | Per-type defaults benchmarked by `backend/validate.py`; per-building measured-data overrides via `backend/overrides.py` |
 | **Output** | Demand, emissions, LCA, network sizing, optimization | Live dashboard, per-building detail, retrofit before/after |
 
 The defining property of turbo-city is in `Simulation.tick()` (`backend/simulation.py`): on **every** tick it advances each building's thermal node and re-estimates its load.
@@ -59,6 +59,7 @@ Grounded in `backend/energy.py` and `backend/scenario.py`, the model covers exac
 | Channel | Function | What it captures | Simplification |
 |---|---|---|---|
 | **Envelope conductance** | `envelope_UA()` | Walls, windows, roof, ground slab → one UA [W/K] | Footprint assumed **square** (perimeter = 4√area); slab uses a fixed reduction factor `B_F = 0.7` |
+| **Ventilation + infiltration** | `ventilation_UA()` | Outdoor-air exchange at a per-type air-change rate → a second UA [W/K] | **Constant** ACH per type; no demand control, occupancy variation, or heat recovery (retrofit scales `ach` down) |
 | **Thermal mass / lag** | `step_T_in()` | 1C RC node: `C·dT/dt = Q_gain − UA·(T_in − T_out)` | **Single** capacitance per building (whole structure), forward-Euler integration |
 | **Solar gain** | `solar_gain_W()`, `facade_orientation_factor()` | Window gain weighted by per-façade orientation vs. a moving sun | Sun azimuth is a **linear** sweep; **no shading**, no diffuse/direct split, isotropic `SOLAR_PEAK_W_M2 = 500` |
 | **Internal + appliance + lighting** | `internal_gain_W()`, `electrical_kw()`, `lighting_kw()` | Power density × floor area × occupancy schedule; lighting cut by a daylight factor | `ELEC_TO_HEAT = 0.9` of appliance load becomes heat; occupancy is a fixed per-type piecewise curve |
@@ -82,7 +83,7 @@ These are not bugs or oversights — they are scope choices. Each item below is 
 | Capability | In a full model | In turbo-city | Why omitted here |
 |---|---|---|---|
 | **Domestic hot water (DHW)** | Full demand + storage losses | ❌ Not modeled | A whole separate demand stream + draw schedules; large code, little interactive payoff |
-| **Ventilation & infiltration** | Air-change rates, heat recovery | ❌ Folded into nothing | Would need air-flow + a second loss path beyond envelope UA |
+| **Ventilation & infiltration** | Air-change rates, heat recovery | ⚠️ Fixed per-type ACH (`ventilation_UA()`) | Constant rate, no heat recovery or demand control — the dynamic part stays out of the tick loop |
 | **Latent loads / humidity** | Sensible **and** latent | ❌ Sensible-only | The 1C node tracks dry-bulb temperature only |
 | **Typed supply systems** | Boilers, chillers, HPs, CHP with curves | ❌ One fixed COP = 3.0 | Part-load efficiency + system selection is a model in itself |
 | **District heating/cooling networks** | Network routing, pumping, losses | ❌ Building-standalone | Each building is an island; no shared plant or pipes |
@@ -90,7 +91,7 @@ These are not bugs or oversights — they are scope choices. Each item below is 
 | **Multi-carrier emissions** | Gas, oil, district heat, grid mix, time-varying factors | ❌ Single static grid factor | All energy is electric here, so one factor suffices |
 | **Embodied carbon / LCA** | Materials, construction, end-of-life | ❌ Operational CO₂ only | Lifecycle accounting is out of scope for a live sandbox |
 | **Optimization** | Supply-system + retrofit optimization | ❌ User explores manually | turbo-city's "optimization" is *you*, dragging sliders |
-| **Real weather year** | 8760 h TMY/EPW | Daily sinusoid or live current conditions | A full weather year contradicts the "now, live" framing |
+| **Real weather year** | 8760 h TMY/EPW | ⚠️ Batch only: `python -m backend.batch --annual --weather file.epw` (`backend/annual.py`) | The live loop stays on "now"; the year runs headless on the same pure model |
 
 > A useful mental model: turbo-city implements roughly the **demand-side sensible thermal core** of a full model's first stage, reduced to one capacitance and one carrier, and wraps it in a real-time loop. The supply-side, network, LCA, and optimization stages have no counterpart here.
 
@@ -115,12 +116,12 @@ Read this section as the "do not over-trust" list. The numbers are *plausible*, 
 
 1. **Geometry is idealized.** Every building is treated as a square prism (`perimeter = 4·√area`, `height = floors × 3 m`). Real footprint shape only enters through the façade-orientation factor.
 2. **One thermal zone, one capacitance.** No floor-by-floor, room-by-room, or core/perimeter distinction. Forward-Euler integration is stable only while the timestep stays well below `Cm/UA` (~20 h for heavy buildings) — true at normal time-warp, but extreme fast-forward could drift.
-3. **Sensible heat only.** No humidity, latent load, DHW, ventilation, or infiltration.
+3. **Sensible heat only.** No humidity, latent load, or DHW. Ventilation + infiltration is a fixed per-type air-change rate (no heat recovery, no occupancy variation).
 4. **All-electric, single grid factor.** No fuel mix, no time-of-day emissions, no gas or district heat. The factor itself is localizable via `input/config.json` → `"locale"`, but it stays a single static number.
 5. **Fixed, idealized HVAC.** COP = 3.0 flat; no equipment sizing, part-load behavior, or system type. HVAC is a pure proportional restore to setpoint.
 6. **Solar is coarse.** Linear azimuth sweep, isotropic peak irradiance, no inter-building shading, no diffuse/direct decomposition.
 7. **Schedules are deterministic per type.** Occupancy comes from a fixed piecewise curve per building type (`constants.OCC`); there is no stochastic occupancy or per-building variation.
-8. **Constants are representative defaults**, drawn from SIA/ISO standards and typical building-stock values, not calibrated against any specific building stock or measured data.
+8. **Constants are representative defaults**, drawn from SIA/ISO standards and typical building-stock values, not calibrated against any specific building stock or measured data. Two hooks narrow the gap: per-building overrides (`backend/overrides.py`, including measured annual kWh for model-vs-measured reporting) and the archetype benchmark check (`python -m backend.validate`).
 9. **Retrofit costs are placeholders.** The default `MEASURE_COST` unit costs and tariff in `backend/scenario.py` are early-stage planning figures — supply a real local cost book via `input/config.json` → `"locale": {"measure_cost_per_m2": ...}` (no code change needed).
 10. **No district-scale interactions.** Buildings do not share plant, networks, or shading with each other in the energy model.
 

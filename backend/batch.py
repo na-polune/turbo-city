@@ -8,6 +8,7 @@ tools. No agents, no live weather, no tick loop — just the pure energy model.
     python -m backend.batch                          # baseline CSV + GeoJSON
     python -m backend.batch --measure u_wall=0.7 --measure cop=1.3
     python -m backend.batch --scenario myplan.json --out results/
+    python -m backend.batch --annual --weather city.epw   # 8760 h against a TMY
     python -m backend.batch --list-measures
 
 Outputs (in --out, default output/):
@@ -18,10 +19,18 @@ Outputs (in --out, default output/):
                             (map worlds only; the grid world has no geo-reference)
     scenario.json           full before/after comparison (when measures are given)
     scenario_buildings.csv  per-building before/after/delta (when measures are given)
+    annual_buildings.csv    per-building 8760 h year (--annual): kWh/yr by end use,
+                            CO2, PV, peak, EUI, model-vs-measured error
+    annual_monthly.csv      city monthly energy, total and per building type (--annual)
 
 A scenario file is the same JSON body as POST /api/scenario:
     {"measures": {"u_wall": 0.7, "cop": 1.3}, "target": {"types": ["res"]}, "tariff": 0.28}
 --measure / --target-* / --tariff flags merge over (and win against) the file.
+
+Calibration: --overrides points at a per-building CSV (see backend/overrides.py);
+input/overrides.csv is picked up automatically when present. Overrides refine the
+baseline everywhere (design day, scenario baseline+retrofit, annual year), and
+rows with measured_kwh_yr get a model-vs-measured column in the annual output.
 """
 import argparse
 import csv
@@ -31,7 +40,7 @@ import random
 import sys
 from pathlib import Path
 
-from . import config, energy, scenario
+from . import annual, config, energy, overrides as overrides_mod, scenario
 from .simulation import WORLD_BUILDERS, Building
 
 BASELINE_COLS = ["id", "name", "type", "floors", "area_m2",
@@ -44,6 +53,11 @@ SCENARIO_COLS = ["id", "name", "type", "floors", "area_m2", "in_scope",
                  "baseline_pv_kwh_day", "retrofit_pv_kwh_day",
                  "baseline_eui_kwh_m2_yr", "retrofit_eui_kwh_m2_yr"]
 
+ANNUAL_COLS = ["id", "name", "type", "floors", "area_m2",
+               "energy_kwh_yr", "hvac_kwh_yr", "elec_kwh_yr", "light_kwh_yr",
+               "pv_kwh_yr", "net_kwh_yr", "co2_kg_yr", "peak_kw", "eui_kwh_m2_yr",
+               "measured_kwh_yr", "model_error_pct"]
+
 
 def build_buildings(cfg):
     """World name, spec, and Building objects from input/ — no agents, no weather."""
@@ -55,11 +69,11 @@ def build_buildings(cfg):
     return w, spec, [Building(b, rng) for b in w["buildings"]]
 
 
-def baseline_rows(buildings):
+def baseline_rows(buildings, params_for):
     """Per-building design-day evaluation under baseline (unretrofitted) params."""
     rows = []
     for b in buildings:
-        r = scenario.evaluate_building(b, energy.base_params(b.type))
+        r = scenario.evaluate_building(b, params_for(b))
         rows.append({
             "id": b.id, "name": b.name, "type": b.type,
             "floors": b.floors, "area_m2": b.area_m2,
@@ -82,6 +96,32 @@ def write_csv(path, cols, rows):
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
+
+
+def annual_rows(buildings, params_for, ovr, weather):
+    """Per-building 8760 h year + city monthly totals (overall and per type)."""
+    rows = []
+    monthly = {"total": [0.0] * 12}
+    monthly.update({t: [0.0] * 12 for t in energy.BUILDING_TYPES})
+    for n, b in enumerate(buildings, 1):
+        r = annual.run_building(b, params_for(b), weather)
+        measured = overrides_mod.measured_for(b, ovr)
+        err = (round((r["energy_kwh_yr"] - measured) / measured * 100.0, 1)
+               if measured else None)
+        rows.append({
+            "id": b.id, "name": b.name, "type": b.type,
+            "floors": b.floors, "area_m2": b.area_m2,
+            **{k: round(r[k], 1) for k in
+               ("energy_kwh_yr", "hvac_kwh_yr", "elec_kwh_yr", "light_kwh_yr",
+                "pv_kwh_yr", "net_kwh_yr", "co2_kg_yr", "peak_kw", "eui_kwh_m2_yr")},
+            "measured_kwh_yr": measured, "model_error_pct": err,
+        })
+        for m in range(12):
+            monthly["total"][m] += r["monthly_kwh"][m]
+            monthly[b.type][m] += r["monthly_kwh"][m]
+        if n % 50 == 0 or n == len(buildings):
+            print(f"  annual: {n}/{len(buildings)} buildings", flush=True)
+    return rows, monthly
 
 
 def unproject(center):
@@ -162,6 +202,14 @@ def main(argv=None):
     ap.add_argument("--target-ids", metavar="I1,I2",
                     help="restrict measures to building ids, e.g. 3,17,42")
     ap.add_argument("--tariff", type=float, help="electricity price per kWh for payback")
+    ap.add_argument("--annual", action="store_true",
+                    help="also run the 8760 h year (backend/annual.py)")
+    ap.add_argument("--weather", metavar="FILE.EPW",
+                    help="EnergyPlus EPW/TMY weather file for the annual run "
+                         "(implies --annual; default: synthetic year)")
+    ap.add_argument("--overrides", metavar="FILE.CSV",
+                    help="per-building parameter/measured-kWh overrides "
+                         "(default: input/overrides.csv when present)")
     ap.add_argument("--list-measures", action="store_true",
                     help="list available measure keys and exit")
     args = ap.parse_args(argv)
@@ -177,11 +225,19 @@ def main(argv=None):
     world, spec, buildings = build_buildings(cfg)
     print(f"  {world['name']}: {len(buildings)} buildings")
 
+    # ---- calibration overrides ----
+    ovr_path = args.overrides or (config.INPUT_DIR / "overrides.csv")
+    ovr = (overrides_mod.load_overrides(ovr_path)
+           if args.overrides or Path(ovr_path).exists() else {})
+    if ovr:
+        print(f"  overrides: {len(ovr)} buildings from {ovr_path}")
+    params_for = lambda b: overrides_mod.params_for(b, ovr)
+
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
     # ---- baseline: per-building design day ----
-    rows = baseline_rows(buildings)
+    rows = baseline_rows(buildings, params_for)
     write_csv(out / "buildings.csv", BASELINE_COLS, rows)
     total_kwh = sum(r["energy_kwh_day"] for r in rows)
     total_co2 = sum(r["co2_kg_day"] for r in rows)
@@ -196,7 +252,8 @@ def main(argv=None):
 
     # ---- optional retrofit scenario ----
     if measures:
-        result = scenario.compare(buildings, measures, target, tariff)
+        result = scenario.compare(buildings, measures, target, tariff,
+                                  params_for=params_for)
         (out / "scenario.json").write_text(json.dumps(result, indent=2),
                                            encoding="utf-8")
         scen_rows = []
@@ -229,6 +286,43 @@ def main(argv=None):
                  if c["payback_years"] is not None else ""))
         print(f"wrote {out / 'scenario.json'}")
         print(f"wrote {out / 'scenario_buildings.csv'}")
+
+    # ---- optional 8760 h annual year ----
+    if args.annual or args.weather:
+        if args.weather:
+            wx_name, wx = annual.read_epw(args.weather)
+        else:
+            wx_name, wx = annual.synthetic_year()
+        print(f"annual run: {wx_name}")
+        ann, monthly = annual_rows(buildings, params_for, ovr, wx)
+        write_csv(out / "annual_buildings.csv", ANNUAL_COLS, ann)
+        with open(out / "annual_monthly.csv", "w", newline="",
+                  encoding="utf-8-sig") as f:
+            w = csv.writer(f)
+            w.writerow(["month", "energy_kwh"] +
+                       [f"{t}_kwh" for t in energy.BUILDING_TYPES])
+            for m in range(12):
+                w.writerow([m + 1, round(monthly["total"][m], 1)] +
+                           [round(monthly[t][m], 1) for t in energy.BUILDING_TYPES])
+        ann_kwh = sum(r["energy_kwh_yr"] for r in ann)
+        print(f"  annual: {ann_kwh:,.0f} kWh/yr, city EUI {ann_kwh / floor_m2:,.1f} "
+              f"kWh/m2/yr, {sum(r['co2_kg_yr'] for r in ann) / 1000:,.0f} t CO2/yr, "
+              f"PV {sum(r['pv_kwh_yr'] for r in ann):,.0f} kWh/yr")
+        cal = [r for r in ann if r["measured_kwh_yr"]]
+        if cal:
+            errs = [r["model_error_pct"] for r in cal]
+            print(f"  calibration ({len(cal)} measured buildings): "
+                  f"mean bias {sum(errs) / len(errs):+.1f}%, "
+                  f"mean abs error {sum(abs(e) for e in errs) / len(errs):.1f}%")
+        for r in ann:
+            p = props_by_id[r["id"]]
+            for k in ("energy_kwh_yr", "eui_kwh_m2_yr", "co2_kg_yr", "pv_kwh_yr",
+                      "peak_kw"):
+                p["annual_" + k] = r[k]
+            p["measured_kwh_yr"] = r["measured_kwh_yr"]
+            p["model_error_pct"] = r["model_error_pct"]
+        print(f"wrote {out / 'annual_buildings.csv'}")
+        print(f"wrote {out / 'annual_monthly.csv'}")
 
     # ---- GeoJSON (map worlds only: the grid world has no geo-reference) ----
     if cfg["world"] == "map" and "center" in spec:

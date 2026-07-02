@@ -33,6 +33,7 @@ MULTIPLIER_MEASURES = {
     "u_win":       ("Glazing (window U-value)", "u_win"),
     "g_win":       ("Glazing solar control",    "g_win"),
     "win_wall":    ("Window-to-wall ratio",     "win_wall"),
+    "ach":         ("Air-tightness / MVHR",     "ach"),
     "lpd":         ("LED lighting",             "lpd"),
     "e_density":   ("Efficient appliances",     "e_density"),
     "pv_fraction": ("Rooftop PV area",          "pv_fraction"),
@@ -55,6 +56,7 @@ _DEFAULT_MEASURE_COST = {
     "u_roof":      (25.0,  "roof"),
     "u_win":       (80.0,  "floor"),
     "g_win":       (40.0,  "floor"),
+    "ach":         (30.0,  "floor"),
     "lpd":         (12.0,  "floor"),
     "e_density":   (20.0,  "floor"),
     "cop":         (70.0,  "floor"),
@@ -250,7 +252,7 @@ def _building_row(b, base, retro, in_scope):
     }
 
 
-def compare(buildings, measures, target=None, tariff=None):
+def compare(buildings, measures, target=None, tariff=None, params_for=None):
     """Baseline vs retrofit city comparison for the given measures + target.
 
     Stateless: reads building geometry / type / occupancy but never mutates the
@@ -258,6 +260,10 @@ def compare(buildings, measures, target=None, tariff=None):
     the delta reflects only the targeted retrofit against the whole-city baseline.
     Returns city totals for both cases, their delta, the 24 h load profile of
     each case, an indicative cost/payback block, and per-building rows.
+
+    params_for: optional callable building -> baseline Params, so calibrated
+    per-building overrides (backend/overrides.py) flow into both cases; default
+    is the type baseline.
     """
     measures = validate_measures(measures)
     target = validate_target(target)
@@ -269,7 +275,7 @@ def compare(buildings, measures, target=None, tariff=None):
     rows, scopes = [], []          # rows: (building, base_eval, retro_eval) for all
     base_scope, retro_scope, in_scope = [], [], []   # in-scope subset for totals
     for b in buildings:
-        bp = energy.base_params(b.type)
+        bp = params_for(b) if params_for else energy.base_params(b.type)
         base = evaluate_building(b, bp)
         scope = _in_scope(b, target)
         if scope:

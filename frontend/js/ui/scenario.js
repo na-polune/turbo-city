@@ -17,6 +17,7 @@ const MEASURES = [
   { key: 'u_wall',      label: 'Wall insulation',      min: 0.3, max: 1, step: 0.05, def: 1, dir: 'down' },
   { key: 'u_roof',      label: 'Roof insulation',      min: 0.3, max: 1, step: 0.05, def: 1, dir: 'down' },
   { key: 'u_win',       label: 'Glazing (window U)',   min: 0.3, max: 1, step: 0.05, def: 1, dir: 'down' },
+  { key: 'ach',         label: 'Air-tightness / MVHR', min: 0.3, max: 1, step: 0.05, def: 1, dir: 'down' },
   { key: 'lpd',         label: 'LED lighting',         min: 0.3, max: 1, step: 0.05, def: 1, dir: 'down' },
   { key: 'e_density',   label: 'Efficient appliances', min: 0.5, max: 1, step: 0.05, def: 1, dir: 'down' },
   { key: 'cop',         label: 'Heat-pump COP',        min: 1,   max: 2, step: 0.1,  def: 1, dir: 'up'   },
@@ -24,8 +25,8 @@ const MEASURES = [
 ];
 
 const PRESETS = {
-  Light: { u_wall: 0.8, u_roof: 0.8, u_win: 0.8, lpd: 0.7, cop: 1.2, pv_fraction: 1.3 },
-  Deep:  { u_wall: 0.45, u_roof: 0.45, u_win: 0.5, lpd: 0.45, e_density: 0.8, cop: 1.6, pv_fraction: 2.5 },
+  Light: { u_wall: 0.8, u_roof: 0.8, u_win: 0.8, ach: 0.85, lpd: 0.7, cop: 1.2, pv_fraction: 1.3 },
+  Deep:  { u_wall: 0.45, u_roof: 0.45, u_win: 0.5, ach: 0.5, lpd: 0.45, e_density: 0.8, cop: 1.6, pv_fraction: 2.5 },
   Reset: {},
 };
 

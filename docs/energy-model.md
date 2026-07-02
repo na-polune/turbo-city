@@ -47,14 +47,14 @@ flowchart LR
 
 ### 2.1 The governing equation
 
-The building interior is treated as a **single lumped thermal capacitance** $C$ at uniform temperature $T_\text{in}$, connected to the outdoor air $T_\text{out}$ through a single **envelope conductance** $UA$. Heat enters from solar gain through windows and internal gains (people + equipment). Conservation of energy on that one node gives a first-order ODE:
+The building interior is treated as a **single lumped thermal capacitance** $C$ at uniform temperature $T_\text{in}$, connected to the outdoor air $T_\text{out}$ through a single **heat-loss conductance** $UA$. Heat enters from solar gain through windows and internal gains (people + equipment). Conservation of energy on that one node gives a first-order ODE:
 
 $$C \frac{dT_\text{in}}{dt} = Q_\text{gain} - UA\,(T_\text{in} - T_\text{out})$$
 
 where
 
 - $C = c_m \cdot A_\text{foot}$ — thermal mass [J/K], with $c_m$ = `cm_af` [J/K per m² of footprint] and $A_\text{foot}$ = footprint area;
-- $UA$ — total envelope conductance [W/K] (§3);
+- $UA$ — total heat-loss conductance [W/K]: envelope (§3) **plus** ventilation/infiltration (§3.1);
 - $Q_\text{gain} = Q_\text{sol} + Q_\text{int}$ — solar + internal gains [W] (§4–§5).
 
 This is the 5R1C single-zone network of **ISO 13790 / SIA 2044** collapsed to its simplest form: one resistor ($UA$) and one capacitor ($C$). The reduction drops the separate air/surface/mass node distinction that the full 5R1C model keeps — see limitations.
@@ -68,7 +68,7 @@ This is the 5R1C single-zone network of **ISO 13790 / SIA 2044** collapsed to it
 $$T_\text{in}^{\,t+\Delta t} = T_\text{in}^{\,t} + \frac{Q_\text{gain} - UA\,(T_\text{in}^{\,t} - T_\text{out})}{C}\,\Delta t$$
 
 ```python
-UA     = envelope_UA(...) * ua_mult
+UA     = (envelope_UA(...) + ventilation_UA(...)) * ua_mult
 Cm     = p.cm_af * area_m2
 Q_gain = solar_gain_W(...) + internal_gain_W(...)
 Q_loss = UA * (T_in - T_out)
@@ -119,6 +119,14 @@ The ground slab uses a transmittance-reduction factor $b_F$ = `B_F` = 0.7 (SIA 3
 | `U_BASE` | — | 0.5 W/m²K | ground-slab U-value (global) |
 
 `ua_mult` scales the whole UA (default 1.0) so the weather model can raise envelope loss in rain/wind.
+
+### 3.1 Ventilation & infiltration
+
+`ventilation_UA(area_m2, floors, btype, params)` adds a second loss path alongside the envelope: outdoor air exchanged at a fixed whole-building air-change rate,
+
+$$UA_\text{vent} = \rho c_p \cdot \frac{\text{ACH} \cdot V}{3600} = 0.34\,[\text{Wh/m}^3\text{K}] \cdot \text{ACH} \cdot V$$
+
+with $V = A_\text{foot} \cdot n_\text{floors} \cdot h_\text{floor}$ the conditioned volume and `ach` a per-type constant (`ACH`, combined mechanical/natural ventilation + envelope leakage, no heat recovery): res 0.5, office 0.7, shop 0.9, hospital 1.2, school 1.0, industrial 0.8 h⁻¹. Both `step_T_in` and `hvac_kw` use $UA = (UA_\text{env} + UA_\text{vent}) \cdot \texttt{ua\_mult}$ — wind/rain plausibly drive infiltration as well as envelope loss. Retrofitting air-tightness or MVHR is modelled by scaling `ach` down (the `ach` measure in `backend/scenario.py`). The rate is constant — no occupancy- or window-opening-driven variation (the overheating heat-map keeps its own adaptive ventilation model, `backend/heatmap.py`).
 
 ---
 
@@ -255,14 +263,14 @@ Note that a few constants are **not** part of `Params` and stay global: `U_BASE`
 
 All values below are the module constants in `backend/energy.py`; the schedules are in `backend/constants.py`. Sources are standards-based (ISO 13790 / SIA 380/1) and representative building-stock values.
 
-| Type | `U_WALL` | `U_ROOF` | `U_WIN` | `WIN_WALL` (WWR) | `G_WIN` (SHGC) | `Cm_Af` [J/K·m²] | `T_HEAT` | `T_COOL` | `E_DENSITY` [W/m²] | `LPD` [W/m²] |
-|---|---|---|---|---|---|---|---|---|---|---|
-| res | 0.50 | 0.30 | 2.0 | 0.25 | 0.55 | 165 000 | 20 | 26 | 4.0 | 6.0 |
-| office | 0.40 | 0.25 | 1.8 | 0.40 | 0.50 | 165 000 | 21 | 24 | 12.0 | 12.0 |
-| shop | 0.60 | 0.35 | 2.5 | 0.35 | 0.60 | 100 000 | 19 | 25 | 8.0 | 20.0 |
-| hospital | 0.40 | 0.25 | 1.8 | 0.30 | 0.50 | 165 000 | 22 | 26 | 13.0 | 11.0 |
-| school | 0.45 | 0.28 | 2.0 | 0.30 | 0.55 | 165 000 | 21 | 26 | 4.0 | 14.0 |
-| industrial | 0.70 | 0.45 | 2.8 | 0.15 | 0.55 | 80 000 | 18 | 30 | 26.5 | 10.8 |
+| Type | `U_WALL` | `U_ROOF` | `U_WIN` | `WIN_WALL` (WWR) | `G_WIN` (SHGC) | `ACH` [h⁻¹] | `Cm_Af` [J/K·m²] | `T_HEAT` | `T_COOL` | `E_DENSITY` [W/m²] | `LPD` [W/m²] |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| res | 0.50 | 0.30 | 2.0 | 0.25 | 0.55 | 0.5 | 165 000 | 20 | 26 | 4.0 | 6.0 |
+| office | 0.40 | 0.25 | 1.8 | 0.40 | 0.50 | 0.7 | 165 000 | 21 | 24 | 12.0 | 12.0 |
+| shop | 0.60 | 0.35 | 2.5 | 0.35 | 0.60 | 0.9 | 100 000 | 19 | 25 | 8.0 | 20.0 |
+| hospital | 0.40 | 0.25 | 1.8 | 0.30 | 0.50 | 1.2 | 165 000 | 22 | 26 | 13.0 | 11.0 |
+| school | 0.45 | 0.28 | 2.0 | 0.30 | 0.55 | 1.0 | 165 000 | 21 | 26 | 4.0 | 14.0 |
+| industrial | 0.70 | 0.45 | 2.8 | 0.15 | 0.55 | 0.8 | 80 000 | 18 | 30 | 26.5 | 10.8 |
 
 U-values [W/m²K]. Setpoints [°C]. The pattern reflects intent: hospital/school have modern insulation; the industrial shed is poorly insulated (high U), low glazing (low WWR), light construction (low mass), high process loads, and a wide comfort band (18–30 °C). Heavy concrete construction sits at `Cm_Af` ≈ 165 000; light at ≈ 80 000.
 
@@ -278,7 +286,8 @@ U-values [W/m²K]. Setpoints [°C]. The pattern reflects intent: hospital/school
 | `COP_HEAT` / `COP_COOL` | 3.0 / 3.0 | heat pump / chiller |
 | `PV_EFFICIENCY` | 0.18 | monocrystalline |
 | `PV_ROOF_FRACTION` | 0.40 | usable roof fraction |
-| `CO2_GRID_KG_KWH` | 0.233 | UK National Grid 2024 (DESNZ) |
+| `RHO_CP_AIR_WH_M3K` | 0.34 Wh/m³K | volumetric heat capacity of air |
+| `CO2_GRID_KG_KWH` | 0.233 | UK National Grid 2024 (DESNZ); locale-configurable |
 | `T_AVG_C` / `T_AMP_C` | 12 / 6 °C | synthetic outdoor profile |
 
 ### Occupancy schedules (`backend/constants.py`, `OCC`)
@@ -298,11 +307,11 @@ This is a teaching/visualisation model, not a code-compliant load calculation. B
 - **1C lumping.** A whole building is one capacitance at one temperature. The full ISO 13790 / SIA 2044 5R1C network distinguishes air, surface, and mass nodes; here they collapse into one. There is no inter-zone heat flow, no thermal stratification, no per-room comfort.
 - **HVAC is decoupled from the thermal node.** `step_T_in` lets $T_\text{in}$ free-float and never injects HVAC heat back in; `hvac_kw` then reports the power *implied* by the current deviation. So the model is not a closed-loop thermostat — $T_\text{in}$ can sit outside the comfort band and reported HVAC power tracks that drift rather than perfectly holding setpoint.
 - **Square-footprint geometry.** Wall and window areas come from `perimeter = 4√area`. Real footprints with high perimeter-to-area ratios (L-shapes, courtyards) under-count envelope area and thus UA. The polygon is used only for the solar **orientation** factor, not for actual surface areas.
-- **No DHW, no ventilation/infiltration, no latent load.** Domestic hot water, mechanical/natural ventilation air exchange, infiltration, and humidity (latent) loads are entirely absent. Real ventilation and infiltration are often a large share of heating demand.
+- **No DHW, no latent load; ventilation is a fixed rate.** Domestic hot water and humidity (latent) loads are entirely absent. Ventilation + infiltration is modelled (§3.1) but as one constant per-type air-change rate — no demand-controlled ventilation, no occupancy or window-opening variation, no heat recovery unless retrofitted via the `ach` measure.
 - **Single COP, no part-load or weather dependence.** Heating and cooling both use a fixed COP of 3.0. No defrost, no chiller efficiency curve, no dependence on outdoor temperature or load fraction.
 - **Single energy carrier, single CO₂ factor.** Everything (HVAC, appliances, lighting) is electricity, emitting at one flat grid factor (0.233 kg/kWh). No gas, no district heat, no time-of-use or marginal grid mix, and PV is not netted out of emissions.
 - **People metabolic gain folded into equipment.** Internal gain is `0.9 ×` appliance load only; occupant body heat is not a separate term.
-- **Synthetic, location-agnostic weather.** Outdoor temperature is a fixed cosine (12 ± 6 °C) and irradiance a fixed 500 W/m² noon peak; there is no real climate file. Clouds/rain enter only as the scalar `solar_mult` / `ua_mult` from the weather model.
+- **Synthetic, location-agnostic weather in the live loop.** Outdoor temperature is a fixed cosine (12 ± 6 °C) and irradiance a fixed 500 W/m² noon peak; clouds/rain enter only as the scalar `solar_mult` / `ua_mult` from the weather model. Real climate files (EPW/TMY) are supported in the headless annual mode only (`backend/annual.py`, `python -m backend.batch --annual --weather file.epw`).
 - **Code/comment drift.** The orientation factor's solar azimuth sweeps at **10°/hour** in code despite a 15°/hour comment. The implementation governs.
 
 For how these per-building numbers are aggregated, sampled into history, and exposed to the dashboard, see [Simulation Loop](simulation.md); for varying the `Params` to model upgrades, see [Retrofit Scenarios](retrofit-scenarios.md).

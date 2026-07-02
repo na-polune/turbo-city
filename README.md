@@ -102,7 +102,7 @@ Every building is a **single-node 1C RC thermal model** (ISO 13790 / SIA 2044, r
 C · dT_in/dt  =  Q_solar + Q_internal  −  UA · (T_in − T_out)
 ```
 
-- **UA** — envelope conductance from wall/window/roof/slab U-values and window-to-wall ratio
+- **UA** — envelope conductance from wall/window/roof/slab U-values and window-to-wall ratio, **plus** ventilation/infiltration air exchange at a per-type air-change rate
 - **Q_solar** — window gain weighted by a per-façade orientation factor from the real polygon
 - **HVAC** — proportional to `UA × (setpoint − T_in)`, divided by the system COP
 - **Lighting** — reduced by a daylight factor (peaks at noon, zero outside 06–18 h)
@@ -145,18 +145,27 @@ Everything the retrofit panel computes is also available **without the server or
 python -m backend.batch                                  # baseline CSV + GeoJSON
 python -m backend.batch --measure u_wall=0.7 --measure cop=1.3 --target-types res
 python -m backend.batch --scenario myplan.json --tariff 0.30 --out results/
+python -m backend.batch --annual --weather city.epw      # full 8760 h year vs a real TMY
 python -m backend.batch --list-measures                  # available measure keys
 ```
 
-It builds the same world from `input/` (OSM cache included), evaluates every building over the deterministic design day, and writes:
+It builds the same world from `input/` (OSM cache included), evaluates every building over the deterministic design day — or a full **8760-hour year** with `--annual`, driven by a standard **EnergyPlus EPW/TMY** weather file (or a clearly-labelled synthetic year without one) — and writes:
 
 | File | Contents |
 |---|---|
 | `buildings.csv` | Per-building baseline day: energy breakdown, CO₂, PV, peak kW, annualised EUI |
 | `buildings.geojson` | Building footprints in **WGS84** with the same metrics as properties — drop straight into QGIS / ArcGIS / kepler.gl |
 | `scenario.json` · `scenario_buildings.csv` | Full before/after comparison + per-building rows (when measures are given) |
+| `annual_buildings.csv` · `annual_monthly.csv` | Per-building annual kWh by end use, CO₂, peak, EUI + city monthly profile per type (`--annual`) |
 
 A `--scenario` file uses the same JSON body as `POST /api/scenario`; `--measure` / `--target-*` / `--tariff` flags merge over it.
+
+## 🎯 Validation & calibration
+
+Two tools back the numbers with evidence instead of vibes:
+
+- **Archetype benchmark check** — `python -m backend.validate` runs each building type through the annual engine and prints its EUI against published UK stock benchmarks (CIBSE TM46 category medians, heat-pump-equivalent basis), deviations and caveats included. Pass `--weather uk_city.epw` for a like-for-like climate.
+- **Per-building overrides** — drop an `input/overrides.csv` (or pass `--overrides`) with measured U-values, setpoints, air-change rates or metered annual kWh per building id; overrides refine the baseline everywhere (design day, scenarios, annual runs), and rows with `measured_kwh_yr` get a model-vs-measured error column plus a calibration summary (mean bias, mean absolute error). See [backend/overrides.py](backend/overrides.py) for the format.
 
 ## 📚 Documentation
 
@@ -174,7 +183,7 @@ Directions under consideration — each chosen to fit the real-time sandbox (clo
 
 - [ ] **Per-carrier emissions + supply types** — distinguish gas / heat-pump / district so fuel-switching shows real CO₂ savings
 - [ ] **Domestic hot water (DHW)** as a first-class end-use
-- [ ] **Ventilation + infiltration** heat-loss term in the RC balance
+- [x] **Ventilation + infiltration** heat-loss term in the RC balance — per-type ACH, retrofittable via the air-tightness/MVHR measure
 - [ ] **Temperature-dependent heat-pump COP** driven by the live outdoor temperature
 - [ ] **Embodied carbon + discounted payback** in the retrofit panel (carbon payback year)
 - [ ] **Construction-vintage archetypes** (a 1960 vs. 2020 building differ) and tilt/temperature-aware PV

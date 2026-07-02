@@ -77,6 +77,7 @@ Each scales exactly one `Params` field by a positive factor in `(0, 10]`. The co
 | `u_win` | Glazing (window U-value) | `u_win` | factor `< 1` |
 | `g_win` | Glazing solar control | `g_win` | factor `< 1` (less solar gain) |
 | `win_wall` | Window-to-wall ratio | `win_wall` | factor `< 1` (less glazed area) |
+| `ach` | Air-tightness / MVHR | `ach` | factor `< 1` (less air exchange) |
 | `lpd` | LED lighting | `lpd` | factor `< 1` |
 | `e_density` | Efficient appliances | `e_density` | factor `< 1` |
 | `pv_fraction` | Rooftop PV area | `pv_fraction` | factor `> 1` (more usable roof) |
@@ -157,6 +158,7 @@ City aggregation (`_aggregate`) sums the additive metrics across in-scope buildi
 | `u_roof` | 25 | roof (`area` footprint) | `1 − f` |
 | `u_win` | 80 | floor | `1 − f` |
 | `g_win` | 40 | floor | `1 − f` |
+| `ach` | 30 | floor | `1 − f` |
 | `lpd` | 12 | floor | `1 − f` |
 | `e_density` | 20 | floor | `1 − f` |
 | `cop` | 70 | floor | `f − 1` |
